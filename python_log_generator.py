@@ -2,102 +2,96 @@
 
 import random
 import datetime
+import json
 
-# Konfiguration der Wahrscheinlichkeiten für jeden Eintragstyp
+# Wahrscheinlichkeitstabelle für Statuscodes
 entry_probabilities = {
-    "200_OK": 0.85,  # Erfolgreiche Anfragen
-    "301_Redirect": 0.05,  # Weiterleitungen
-    "404_Not_Found": 0.05,  # Nicht gefundene Ressourcen
-    "403_Forbidden": 0.02,  # Zugriff verweigert
-    "500_Internal_Error": 0.01,  # Serverfehler
-    "502_Bad_Gateway": 0.01,  # Fehler bei Upstream-Verbindung
-    "504_Timeout": 0.01  # Zeitüberschreitung
+    "200_OK": 0.85,
+    "301_Redirect": 0.05,
+    "404_Not_Found": 0.05,
+    "403_Forbidden": 0.02,
+    "500_Internal_Error": 0.01,
+    "502_Bad_Gateway": 0.01,
+    "504_Timeout": 0.01
 }
 
-# User-Agents aus externer Datei laden
-def load_user_agents(file_path):
-    with open(file_path, "r") as file:
-        return [line.strip() for line in file if line.strip()]
-
-# Pfade/Seiten/Dateien aus externer Datei laden
-def load_paths(file_path):
-    with open(file_path, "r") as file:
-        return [line.strip() for line in file if line.strip()]
-
-# Zufällige IPv4- und IPv6-Adressen generieren
+# IPv4- und IPv6-Adressen generieren
 def random_ipv4():
     return ".".join(str(random.randint(0, 255)) for _ in range(4))
 
 def random_ipv6():
-    return ":".join(
-        f"{random.randint(0, 65535):x}" for _ in range(8)
-    )
+    return ":".join(f"{random.randint(0, 65535):x}" for _ in range(8))
 
 # Log-Eintrag generieren
 def generate_log_entry(user_agents, paths):
-    # Wähle zufälligen Log-Typ basierend auf Wahrscheinlichkeiten
-    log_type = random.choices(
-        list(entry_probabilities.keys()),
-        list(entry_probabilities.values())
-    )[0]
+    # IP-Adresse (entweder IPv4 oder IPv6)
+    ip_address = random.choice([random_ipv4(), random_ipv6()])
 
-    # IP-Adresse zufällig auswählen
-    ip = random.choice([random_ipv4(), random_ipv6()])
-
-    # Benutzername (meistens "-" für keinen Benutzer)
+    # Benutzer und Zeitstempel
     user = "-"
-
-    # Zeitstempel
     timestamp = datetime.datetime.now().strftime("%d/%b/%Y:%H:%M:%S +0000")
 
-    # Anfrage basierend auf Log-Typ
+    # Zufälliger Statuscode und zugehöriger Pfad
+    log_type = random.choices(list(entry_probabilities.keys()), weights=entry_probabilities.values())[0]
     path = random.choice(paths)
+    
+    # HTTP-Methode und Version
+    request_line = f"GET {path} HTTP/1.1"
+    
+    # Statuscode und Body-Größe
     if log_type == "200_OK":
-        request = f"GET {path} HTTP/1.1"
-        status = 200
+        status_code = 200
+        body_bytes_sent = random.randint(100, 5000)
     elif log_type == "301_Redirect":
-        request = f"GET {path} HTTP/1.1"
-        status = 301
+        status_code = 301
+        body_bytes_sent = 0
     elif log_type == "404_Not_Found":
-        request = f"GET {path} HTTP/1.1"
-        status = 404
+        status_code = 404
+        body_bytes_sent = 0
     elif log_type == "403_Forbidden":
-        request = f"GET {path} HTTP/1.1"
-        status = 403
+        status_code = 403
+        body_bytes_sent = 0
     elif log_type == "500_Internal_Error":
-        request = f"GET {path} HTTP/1.1"
-        status = 500
+        status_code = 500
+        body_bytes_sent = 0
     elif log_type == "502_Bad_Gateway":
-        request = f"GET {path} HTTP/1.1"
-        status = 502
+        status_code = 502
+        body_bytes_sent = 0
     elif log_type == "504_Timeout":
-        request = f"GET {path} HTTP/1.1"
-        status = 504
-
-    # Größe der Antwort (zufällig, abhängig vom Typ)
-    body_bytes_sent = random.randint(0, 5000) if status == 200 else 0
-
-    # Referer (meistens "-")
-    referer = random.choice(["-"])
+        status_code = 504
+        body_bytes_sent = 0
 
     # User-Agent
     user_agent = random.choice(user_agents)
 
-    # Log-Eintrag formatieren
+    # Zusammenstellen des Log-Eintrags
     log_entry = (
-        f"{ip} - {user} [{timestamp}] \"{request}\" {status} {body_bytes_sent} \"{referer}\" \"{user_agent}\""
+        f'{ip_address} - {user} [{timestamp}] "{request_line}" {status_code} {body_bytes_sent} "-" "{user_agent}"'
     )
     return log_entry
 
-# Anzahl der Log-Einträge generieren
-def generate_logs(num_entries, user_agents, paths):
-    logs = [generate_log_entry(user_agents, paths) for _ in range(num_entries)]
+# Logs generieren
+def generate_logs(num_logs, user_agents_file, paths_file):
+    # User-Agents und Pfade laden
+    with open(user_agents_file, "r", encoding="utf-8") as ua_file:
+        user_agents = json.load(ua_file)
+
+    with open(paths_file, "r", encoding="utf-8") as paths_file:
+        paths = json.load(paths_file)
+
+    # Logs erstellen
+    logs = [generate_log_entry(user_agents, paths) for _ in range(num_logs)]
     return logs
 
-# Beispiel: 100 Log-Einträge generieren und ausgeben
+# Hauptprogramm
 if __name__ == "__main__":
-    user_agents = load_user_agents("user_agents.txt")
-    paths = load_paths("paths.txt")
-    log_entries = generate_logs(100, user_agents, paths)
-    for log in log_entries:
-        print(log)
+    user_agents_file = "user_agents.json"
+    paths_file = "paths.json"
+    num_logs = 100  # Anzahl der Logs
+
+    # Logs generieren und in Datei speichern
+    logs = generate_logs(num_logs, user_agents_file, paths_file)
+    with open("access.log", "w", encoding="utf-8") as log_file:
+        log_file.write("\n".join(logs))
+
+    print(f"{num_logs} Logs wurden erfolgreich in 'access.log' gespeichert.")

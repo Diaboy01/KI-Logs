@@ -1,3 +1,5 @@
+# File: azure_log_generator.py
+
 import os
 import requests
 import re
@@ -27,6 +29,12 @@ DB_NAME = "log_generator"
 # Konfigurierbare Wartezeiten
 SHORT_DELAY = 1  # Sekunden zwischen erfolgreichen Anfragen
 LONG_DELAY = 30  # Sekunden bei einem Fehler, bevor erneut versucht wird
+
+# Gewünschte Anzahl der Einträge
+DESIRED_NUM_ENTRIES = 100
+
+# Wiederholte Einträge verfolgen
+REPEATED_ENTRIES_FILE = "repeated_entries.json"
 
 # Verbindung zur MySQL-Datenbank herstellen
 def connect_to_db():
@@ -97,6 +105,15 @@ def save_entries_to_json(file_path, entries):
     except Exception as e:
         log(f"Fehler beim Schreiben der Datei {file_path}: {e}", "ERROR")
 
+# Wiederholte Einträge speichern
+def save_repeated_entries(entries):
+    try:
+        with open(REPEATED_ENTRIES_FILE, "w", encoding="utf-8") as file:
+            json.dump(entries, file, ensure_ascii=False, indent=4)
+        log(f"{len(entries)} wiederholte Einträge in {REPEATED_ENTRIES_FILE} gespeichert.", "INFO")
+    except Exception as e:
+        log(f"Fehler beim Speichern der wiederholten Einträge: {e}", "ERROR")
+
 # Überprüfen, ob der Eintrag gültig ist
 def validate_entry(entry, format_regex):
     is_valid = bool(re.match(format_regex, entry))
@@ -138,7 +155,7 @@ def send_chat_request(prompt):
             time.sleep(LONG_DELAY)  # Lange Pause bei einem Fehler
 
 # Einträge generieren
-def generate_entries(table_name, json_file_path, prompt_template, format_regex, num_entries):
+def generate_entries(table_name, json_file_path, prompt_template, format_regex):
     # Lade bestehende Daten aus der Datenbank und JSON-Datei
     existing_db_entries = set(load_existing_entries(table_name))
     try:
@@ -149,14 +166,22 @@ def generate_entries(table_name, json_file_path, prompt_template, format_regex, 
         log(f"Keine oder ungültige Datei gefunden. Neue Datei wird erstellt: {json_file_path}", "WARNING")
 
     entries = existing_db_entries.union(existing_json_entries)
-    counter = Counter()
+    repeated_entries = Counter()
 
-    while len(entries) < num_entries + len(existing_db_entries):
+    while len(entries) < DESIRED_NUM_ENTRIES:
         # Prompt erstellen
         sampled_entries = random.sample(list(existing_db_entries), min(len(existing_db_entries), 10)) if existing_db_entries else []
         sampled_text = "\n".join(sampled_entries)
-        prompt = (prompt_template + "\nBereits vorhandene Einträge:\n" + sampled_text +
-                  "\nBitte generiere komplett andere, zufällige Einträge.").format(existing_count=len(entries))
+        # Falls Einträge in repeatet_entries vorhanden sind
+        repated_entries = [entry for entry, count in repeated_entries.items() if count > 0]
+        repeated_text = "\n".join(repated_entries)
+        if repeated_text:
+            prompt = (prompt_template + "\nBereits vorhandene Einträge:\n" + sampled_text +
+                      "\nVermeide solche Einträge:\n" + repeated_text +
+                      "\nBitte generiere komplett andere, zufällige Einträge.").format(existing_count=len(entries))
+        else:
+            prompt = (prompt_template + "\nBereits vorhandene Einträge:\n" + sampled_text +
+                        "\nBitte generiere andere, zufällige Einträge.").format(existing_count=len(entries))
 
         log(f"Sende Anfrage mit Prompt: {prompt}", "INFO")
         response = send_chat_request(prompt)
@@ -168,24 +193,18 @@ def generate_entries(table_name, json_file_path, prompt_template, format_regex, 
                 if validate_entry(line, format_regex):
                     if line not in entries:
                         entries.add(line)
-                        counter[line] += 1
+                        save_entries_to_db(table_name, [line])  # Speichere sofort in der Datenbank
+                        save_entries_to_json(json_file_path, entries)  # Speichere sofort in JSON
                     else:
                         log(f"Doppelter Eintrag entdeckt: {line}", "WARNING")
+                        repeated_entries[line] += 1
                 else:
                     log(f"Ungültiges Format: {line}", "WARNING")
         else:
             log("Keine Antwort erhalten.", "ERROR")
 
-        # Falls sich Einträge zu oft wiederholen, passe den Prompt an
-        most_common = counter.most_common(1)
-        if most_common and most_common[0][1] > 1:
-            log(f"Eintrag wiederholt sich zu oft: {most_common[0]}", "INFO")
-
-    # Speichere die neuen Einträge in der Datenbank und JSON-Datei
-    new_entries = entries - existing_db_entries
-    save_entries_to_db(table_name, new_entries)
-    save_entries_to_json(json_file_path, entries)
-    log(f"{len(new_entries)} neue Einträge erfolgreich in der Datenbank und Datei gespeichert.", "INFO")
+    save_repeated_entries(repeated_entries)
+    log(f"{DESIRED_NUM_ENTRIES} Einträge erfolgreich generiert.", "INFO")
 
 # Hauptablauf
 if __name__ == "__main__":
@@ -209,7 +228,7 @@ if __name__ == "__main__":
         create_table_if_not_exists(table_name)
 
         # Generiere User-Agents
-        generate_entries(table_name, json_file_path, user_agents_prompt, user_agents_regex, 100)
+        generate_entries(table_name, json_file_path, user_agents_prompt, user_agents_regex)
 
     elif choice == "2":
         # Parameter für Pfade
@@ -222,7 +241,7 @@ if __name__ == "__main__":
         create_table_if_not_exists(table_name)
 
         # Generiere Pfade
-        generate_entries(table_name, json_file_path, paths_prompt, paths_regex, 100)
+        generate_entries(table_name, json_file_path, paths_prompt, paths_regex)
 
     elif choice == "3":
         log("Funktion 'Coming Soon' ist noch nicht verfügbar.", "INFO")
