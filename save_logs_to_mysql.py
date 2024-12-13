@@ -4,7 +4,6 @@ import os
 import re
 import mysql.connector
 import pandas as pd
-from collections import defaultdict
 
 def log(message, level="INFO"):
     levels = {"INFO": "[INFO]", "WARNING": "[WARNING]", "ERROR": "[ERROR]"}
@@ -42,7 +41,10 @@ def create_table_if_not_exists(table_name):
             timestamp DATETIME,
             request VARCHAR(255),
             status_code INT,
-            user_agent TEXT
+            user_agent TEXT,
+            user VARCHAR(255) NULL,
+            referrer TEXT NULL,
+            message TEXT NULL
         )
     """)
     conn.commit()
@@ -50,27 +52,42 @@ def create_table_if_not_exists(table_name):
     conn.close()
     log(f"Tabelle '{table_name}' erstellt oder existiert bereits.", "INFO")
 
+# Spalte hinzufügen, falls sie fehlt
+def add_missing_columns(table_name, column_definitions):
+    conn = connect_to_db()
+    cursor = conn.cursor()
+    for column_name, column_definition in column_definitions.items():
+        try:
+            cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}")
+            log(f"Spalte '{column_name}' zur Tabelle '{table_name}' hinzugefügt.", "INFO")
+        except mysql.connector.Error as err:
+            if "Duplicate column name" in str(err):
+                log(f"Spalte '{column_name}' existiert bereits in Tabelle '{table_name}'.", "INFO")
+            else:
+                log(f"Fehler beim Hinzufügen der Spalte '{column_name}': {err}", "ERROR")
+                raise SystemExit
+    conn.commit()
+    cursor.close()
+    conn.close()
+
 # Funktion zur Verarbeitung einer einzelnen Log-Datei
 def process_log_file(log_file, log_type):
     data = []
     with open(log_file, "r") as file:
         for line_num, line in enumerate(file, start=1):
             if log_type == "access":
-                match = re.match(r'(?P<ip>\S+) - - \[(?P<timestamp>[^\]]+)] "(?P<method>\S+) (?P<url>\S+) (?P<http_version>\S+)" (?P<status>\d+) (?P<size>\d+) "(?P<referrer>[^"]*)" "(?P<user_agent>[^"]*)"', line)
+                match = re.match(r'(?P<ip>\S+) - - \[(?P<timestamp>[^\]]+)] \"(?P<method>\S+) (?P<url>\S+) (?P<http_version>\S+)\" (?P<status>\d+) (?P<size>\d+) \"(?P<referrer>[^\"]*)\" \"(?P<user_agent>[^\"]*)\"', line)
                 if match:
                     data.append(match.groupdict())
             elif log_type == "error":
-                # Fehlerbezogene Logs parsen
-                match = re.match(r'\[(?P<timestamp>[^\]]+)] \[(?P<module>[^\]]+)\] \[(?P<severity>[^\]]+)\] \[pid (?P<pid>\d+)\] \[client (?P<client>[^\]]+)\] (?P<message>.+)', line)
+                match = re.match(r'\[(?P<timestamp>[^\]]+)] \[(?P<module>[^\]]+)] \[(?P<severity>[^\]]+)] \[pid (?P<pid>\d+)] \[client (?P<client>[^\]]+)] (?P<message>.+)', line)
                 if match:
                     data.append(match.groupdict())
             elif log_type == "myfiles-access":
-                # Zusätzliche Felder (z. B. Benutzer)
-                match = re.match(r'(?P<ip>\S+) - (?P<user>\S+) \[(?P<timestamp>[^\]]+)] "(?P<method>\S+) (?P<url>\S+) (?P<http_version>\S+)" (?P<status>\d+) (?P<size>\d+) "(?P<referrer>[^"]*)" "(?P<user_agent>[^"]*)"', line)
+                match = re.match(r'(?P<ip>\S+) - (?P<user>\S+) \[(?P<timestamp>[^\]]+)] \"(?P<method>\S+) (?P<url>\S+) (?P<http_version>\S+)\" (?P<status>\d+) (?P<size>\d+) \"(?P<referrer>[^\"]*)\" \"(?P<user_agent>[^\"]*)\"', line)
                 if match:
                     data.append(match.groupdict())
     return pd.DataFrame(data)
-
 
 # Daten in die MySQL-Datenbank einfügen
 def save_to_database(df, table_name):
@@ -80,27 +97,37 @@ def save_to_database(df, table_name):
     for _, row in df.iterrows():
         try:
             cursor.execute(f"""
-                INSERT INTO {table_name} (ip, timestamp, request, status_code, user_agent)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (row["ip"], row["timestamp"], row["request"], row["status_code"], row["user_agent"]))
+                INSERT INTO {table_name} (ip, timestamp, request, status_code, user_agent, user, referrer, message)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                row.get("ip"),
+                row.get("timestamp"),
+                row.get("method", "") + " " + row.get("url", "") if "method" in row else None,
+                row.get("status"),
+                row.get("user_agent"),
+                row.get("user"),
+                row.get("referrer"),
+                row.get("message")
+            ))
         except mysql.connector.Error as err:
             log(f"Fehler beim Einfügen von Daten: {err}", "ERROR")
+            raise SystemExit
 
     conn.commit()
     cursor.close()
     conn.close()
     log(f"{len(df)} Datensätze in die Datenbank eingefügt.", "INFO")
 
-# Funktion zur Ermittlung des Tabellennamens basierend auf dem Log-Dateinamen
-def determine_table_name(log_file):
+# Funktion zur Ermittlung des Log-Typs basierend auf dem Dateinamen
+def determine_log_type_and_table(log_file):
     if "access" in log_file:
-        return "access_logs"
+        return "access", "access_logs"
     elif "error" in log_file:
-        return "error_logs"
+        return "error", "error_logs"
     elif "myfiles-access" in log_file:
-        return "myfiles_access_logs"
+        return "myfiles-access", "myfiles_access_logs"
     else:
-        return "log_components"  # Fallback-Tabelle
+        return "unknown", "log_components"
 
 # Hauptablauf
 def main():
@@ -109,14 +136,26 @@ def main():
 
     if not all_files:
         log("Keine Log-Dateien im Verzeichnis gefunden.", "ERROR")
-        return
+        raise SystemExit
 
     for log_file in all_files:
-        table_name = determine_table_name(log_file)
+        log_type, table_name = determine_log_type_and_table(log_file)
+
+        if log_type == "unknown":
+            log(f"Unbekannter Log-Typ für Datei: {log_file}", "WARNING")
+            continue
+
         create_table_if_not_exists(table_name)
 
-        log(f"Verarbeite Datei: {log_file}", "INFO")
-        df = process_log_file(log_file)
+        column_definitions = {
+            "user": "VARCHAR(255) NULL",
+            "referrer": "TEXT NULL",
+            "message": "TEXT NULL"
+        }
+        add_missing_columns(table_name, column_definitions)
+
+        log(f"Verarbeite Datei: {log_file} als Typ: {log_type}", "INFO")
+        df = process_log_file(log_file, log_type)
 
         if df.empty:
             log(f"Datei {log_file} ist leer oder enthält ungültige Daten.", "WARNING")
