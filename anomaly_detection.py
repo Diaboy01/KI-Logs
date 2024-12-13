@@ -95,6 +95,7 @@ all_files = [os.path.join(log_folder, f) for f in os.listdir(log_folder) if os.p
 for log_file in all_files:
     # Falls Name der Datei mit einem Punkt beginnt, überspringen
     if os.path.basename(log_file).startswith("."):
+        print(f"Überspringe Datei: {log_file}")
         continue
 
     log_type = "access" if "access" in log_file else "error" if "error" in log_file else "myfiles"
@@ -226,8 +227,8 @@ for log_file in all_files:
 
     print(f"Visualisierungen gespeichert in: {output_folder}")
 
-    isolation_anomalies.to_json(os.path.join(output_folder, "anomalies_isolation_forest.json"), orient="records", lines=True)
-    dbscan_anomalies.to_json(os.path.join(output_folder, "anomalies_dbscan.json"), orient="records", lines=True)
-    autoencoder_anomalies.to_json(os.path.join(output_folder, "anomalies_autoencoder.json"), orient="records", lines=True)
+    isolation_anomalies.to_json(os.path.join(output_folder, f"{log_file_name}_anomalies_isolation_forest.json"), orient="records", lines=True)
+    dbscan_anomalies.to_json(os.path.join(output_folder, f"{log_file_name}_anomalies_dbscan.json"), orient="records", lines=True)
+    autoencoder_anomalies.to_json(os.path.join(output_folder, f"{log_file_name}_anomalies_autoencoder.json"), orient="records", lines=True)
 
 print("Analyse abgeschlossen.")
