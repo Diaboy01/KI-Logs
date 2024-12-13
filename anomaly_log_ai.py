@@ -5,20 +5,35 @@ from anomaly_detection import process_log_file, extract_features
 from azure_log_generator import send_chat_request
 
 # Funktion zur Interaktion mit dem Benutzer, wenn eine Anomalie gefunden wird
-def handle_anomalies(df, anomalies, log_type):
+def handle_anomalies(df, anomalies, log_type, log_file):
     if anomalies.empty:
         print("Keine Anomalien gefunden.")
         return
 
     for index, anomaly in anomalies.iterrows():
-        print(f"Anomalie im {log_type}-Log gefunden:")
+        print(f"Anomalie im {log_type}-Log gefunden (Datei: {log_file}, Zeile: {index + 1}):")
         print(anomaly)
+
+        # Zusätzliche Diagnose der Anomalie
+        issues = []
+        if anomaly.get("is_suspicious_path", 0) == 1:
+            issues.append("Verdächtiger Pfad möglicherweise")
+        if anomaly.get("time_diff", 0) > 300:
+            issues.append("Ungewöhnlich lange Zeitdifferenz zwischen Anfragen")
+        if anomaly.get("ip_count", 0) < 2:
+            issues.append("IP-Adresse wurde nur einmal verwendet, möglicherweise ungewöhnlich")
+        if not issues:
+            issues.append("Keine spezifischen Probleme identifiziert, aber als Anomalie markiert")
+
+        print("Mögliche Probleme bei dieser Anomalie:")
+        for issue in issues:
+            print(f"- {issue}")
 
         user_input = input("Möchten Sie diese Anomalie analysieren lassen? (ja/nein): ").strip().lower()
         if user_input == "ja":
             # Bereite die Daten für das Sprachmodell vor
             anomaly_json = anomaly.to_json()
-            prompt = f"Analysieren Sie die folgende Anomalie aus einem {log_type}-Log und geben Sie eine Einschätzung, was zu tun ist:\n{anomaly_json}"
+            prompt = f"Analysiere den folgenden {log_type} Log Eintrag und gebe eine Einschätzung auf Deutsch, was zu tun ist: \n{anomaly_json}"
             print("Sende Anfrage an das Sprachmodell...")
 
             response = send_chat_request(prompt)
@@ -69,6 +84,6 @@ if __name__ == "__main__":
         isolation_anomalies = df[df["anomaly_score"] == -1]  # -1 bedeutet Anomalie
 
         # Anomalien behandeln
-        handle_anomalies(df, isolation_anomalies, log_type)
+        handle_anomalies(df, isolation_anomalies, log_type, log_file)
 
     print("Analyse abgeschlossen.")
