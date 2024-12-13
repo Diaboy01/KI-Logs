@@ -62,7 +62,7 @@ def parse_access_log(line):
 
 def parse_error_log(line):
     pattern = re.compile(
-        r'(?P<timestamp>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(?P<severity>error)] (?P<module>[^:]+): \*(?P<pid>\d+) (?P<message>.+), client: (?P<client>[^,]+), server: (?P<server>[^,]+), request: \"(?P<request>[^"]+)\", host: \"(?P<host>[^"]+)\"'
+        r'(?P<timestamp>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(?P<severity>error)] (?P<module>[^:]+): \*(?P<pid>\d+) (?P<message>.+), client: (?P<client>[^,]+), server: (?P<server>[^,]+), request: \"(?P<request>[^\"]+)\", host: \"(?P<host>[^\"]+)\"'
     )
     match = pattern.match(line)
     if match:
@@ -88,9 +88,9 @@ def process_log_file(log_file, log_type):
     data = []
     with open(log_file, "r") as file:
         for line in file:
-            if log_type == "myfiles":
+            if log_type == "myfiles" and "myfiles" in log_file:
                 entry = parse_myfiles_log(line)
-            elif log_type == "error":
+            elif log_type == "error" and "error" in log_file:
                 entry = parse_error_log(line)
             elif log_type == "access":
                 entry = parse_access_log(line)
@@ -186,7 +186,13 @@ def main():
 
     total_files = len(all_files)
     for idx, log_file in enumerate(all_files, start=1):
-        log_type = "access" if "access" in log_file else "error" if "error" in log_file else "myfiles"
+        if "myfiles" in log_file:
+            log_type = "myfiles"
+        elif "error" in log_file:
+            log_type = "error"
+        else:
+            log_type = "access"
+
         table_name = log_definitions[log_type]["table"]
 
         log(f"Verarbeite Datei {idx}/{total_files}: {log_file} als Typ: {log_type}", "INFO")
