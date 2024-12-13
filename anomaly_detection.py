@@ -11,39 +11,79 @@ from tensorflow.keras.layers import Dense  # type: ignore
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 import seaborn as sns
+import re
+
+# Log-Parsing-Funktionen
+def parse_access_log(line):
+    pattern = re.compile(
+        r'(?P<ip>\S+) - - \[(?P<timestamp>[^\]]+)] \"(?P<method>\S+) (?P<url>\S+) (?P<http_version>HTTP/\d\.\d)\" (?P<status_code>\d+) (?P<size>\d+|-) \"(?P<referrer>[^\"]*)\" \"(?P<user_agent>[^\"]*)\"'
+    )
+    match = pattern.match(line)
+    if match:
+        data = match.groupdict()
+        data["timestamp"] = pd.to_datetime(data["timestamp"], format="%d/%b/%Y:%H:%M:%S %z", errors="coerce")
+        data["size"] = None if data["size"] == "-" else int(data["size"])
+        return data
+    return None
+
+def parse_error_log(line):
+    pattern = re.compile(
+        r'(?P<timestamp>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(?P<severity>error)] (?P<module>[^:]+): \*(?P<pid>\d+) (?P<message>.+), client: (?P<client>[^,]+), server: (?P<server>[^,]+), request: \"(?P<request>[^\"]+)\", host: \"(?P<host>[^\"]+)\"'
+    )
+    match = pattern.match(line)
+    if match:
+        data = match.groupdict()
+        data["timestamp"] = pd.to_datetime(data["timestamp"], format="%Y/%m/%d %H:%M:%S", errors="coerce")
+        return data
+    return None
+
+def parse_myfiles_log(line):
+    pattern = re.compile(
+        r'(?P<ip>\S+) - (?P<user>\S+) \[(?P<timestamp>[^\]]+)] \"(?P<method>\S+) (?P<url>\S+) (?P<http_version>HTTP/\d\.\d)\" (?P<status_code>\d+) (?P<size>\d+|-) \"(?P<referrer>[^\"]*)\" \"(?P<user_agent>[^\"]*)\"'
+    )
+    match = pattern.match(line)
+    if match:
+        data = match.groupdict()
+        data["timestamp"] = pd.to_datetime(data["timestamp"], format="%d/%b/%Y:%H:%M:%S %z", errors="coerce")
+        data["size"] = None if data["size"] == "-" else int(data["size"])
+        return data
+    return None
 
 # Funktion zur Verarbeitung einer einzelnen Log-Datei
-def process_log_file(log_file):
+def process_log_file(log_file, log_type):
     data = []
     with open(log_file, "r") as file:
-        for line_num, line in enumerate(file, start=1):
-            parts = line.strip().split(" ")
-            if len(parts) > 9:  # Sicherstellen, dass die Zeile gültig ist
-                try:
-                    data.append({
-                        "line_num": line_num,
-                        "ip": parts[0],
-                        "timestamp": parts[3].strip("[]"),
-                        "request": parts[5] + " " + parts[6],
-                        "status_code": int(parts[8]),
-                        "user_agent": " ".join(parts[11:])
-                    })
-                except ValueError:
-                    pass  # Fehlerhafte Zeilen überspringen
+        for line in file:
+            if log_type == "access":
+                entry = parse_access_log(line)
+            elif log_type == "error":
+                entry = parse_error_log(line)
+            elif log_type == "myfiles":
+                entry = parse_myfiles_log(line)
+            else:
+                entry = None
+
+            if entry:
+                entry["log_file"] = os.path.basename(log_file)
+                data.append(entry)
     return pd.DataFrame(data)
 
 # Funktion zum Extrahieren von zusätzlichen Features
-def extract_features(df):
-    df["timestamp"] = pd.to_datetime(df["timestamp"], format="%d/%b/%Y:%H:%M:%S", errors="coerce")
-    df["ip_count"] = df["ip"].map(df["ip"].value_counts())
-    df["status_code"] = df["status_code"].astype(str)
-    df["user_agent_length"] = df["user_agent"].str.len()
-    df["time_diff"] = df["timestamp"].diff().dt.total_seconds().fillna(0)
-    df["is_suspicious_path"] = df["request"].str.contains(r"(../|.env|.git/config)", regex=True).astype(int)
+def extract_features(df, log_type):
+    if log_type == "access" or log_type == "myfiles":
+        df["ip_count"] = df["ip"].map(df["ip"].value_counts())
+        df["user_agent_length"] = df["user_agent"].str.len()
+        df["time_diff"] = df["timestamp"].diff().dt.total_seconds().fillna(0)
+        df["is_suspicious_path"] = df["url"].str.contains(r"(../|.env|.git/config)", regex=True).astype(int)
+        df["status_code"] = df["status_code"].astype(str)
 
-    # Label-Encoding für kategoriale Features
-    status_encoder = LabelEncoder()
-    df["status_code_encoded"] = status_encoder.fit_transform(df["status_code"])
+        # Label-Encoding für kategoriale Features
+        status_encoder = LabelEncoder()
+        df["status_code_encoded"] = status_encoder.fit_transform(df["status_code"])
+
+    elif log_type == "error":
+        df["pid"] = df["pid"].astype(int)
+        df["message_length"] = df["message"].str.len()
 
     return df
 
@@ -53,20 +93,28 @@ all_files = [os.path.join(log_folder, f) for f in os.listdir(log_folder) if os.p
 
 # Ergebnisse speichern
 for log_file in all_files:
-    print(f"Verarbeite Datei: {log_file}")
+    # Falls Name der Datei mit einem Punkt beginnt, überspringen
+    if os.path.basename(log_file).startswith("."):
+        continue
+
+    log_type = "access" if "access" in log_file else "error" if "error" in log_file else "myfiles"
+
+    print(f"Verarbeite Datei: {log_file} als Typ: {log_type}")
 
     # Log-Datei einlesen
-    df = process_log_file(log_file)
+    df = process_log_file(log_file, log_type)
 
     if df.empty:
         print(f"Datei {log_file} ist leer oder enthält ungültige Daten.")
         continue
 
     # Feature-Engineering
-    df = extract_features(df)
+    df = extract_features(df, log_type)
 
-    # Features extrahieren
-    features = df[["ip_count", "status_code_encoded", "user_agent_length", "time_diff", "is_suspicious_path"]]
+    if log_type == "error":
+        features = df[["pid", "message_length"]]
+    else:
+        features = df[["ip_count", "status_code_encoded", "user_agent_length", "time_diff", "is_suspicious_path"]]
 
     # Unsupervised Learning mit Isolation Forest
     scaler = StandardScaler()
@@ -118,7 +166,7 @@ for log_file in all_files:
 
     # Rekonstruktionsfehler visualisieren
     plt.figure(figsize=(10, 6))
-    plt.plot(df["line_num"], reconstruction_error, label="Rekonstruktionsfehler")
+    plt.plot(range(len(reconstruction_error)), reconstruction_error, label="Rekonstruktionsfehler")
     plt.axhline(y=threshold, color='r', linestyle='--', label="Threshold")
     plt.xlabel("Zeile im Log")
     plt.ylabel("Rekonstruktionsfehler")
@@ -127,27 +175,17 @@ for log_file in all_files:
     plt.savefig(os.path.join(output_folder, f"{log_file_name}_errors.png"))
     plt.close()
 
-    # Heatmap der IP-Aktivitäten
-    ip_activity = df.groupby("ip")["timestamp"].count().sort_values(ascending=False)
-    plt.figure(figsize=(12, 8))
-    sns.barplot(x=ip_activity.index, y=ip_activity.values, palette="coolwarm")
-    plt.xticks(rotation=90)
-    plt.title("Anfragen pro IP")
-    plt.xlabel("IP-Adresse")
-    plt.ylabel("Anzahl der Anfragen")
-    plt.savefig(os.path.join(output_folder, f"{log_file_name}_ip_activity.png"))
-    plt.close()
-
-    # Anomalien im Zeitverlauf
-    plt.figure(figsize=(12, 6))
-    plt.scatter(df["timestamp"], reconstruction_error, c=(reconstruction_error > threshold), cmap="coolwarm", label="Anomalien")
-    plt.axhline(y=threshold, color='r', linestyle='--', label="Threshold")
-    plt.title("Anomalien im Zeitverlauf")
-    plt.xlabel("Zeit")
-    plt.ylabel("Rekonstruktionsfehler")
-    plt.legend()
-    plt.savefig(os.path.join(output_folder, f"{log_file_name}_time_anomalies.png"))
-    plt.close()
+    # Heatmap der IP-Aktivitäten (nur für Access- und MyFiles-Logs)
+    if log_type != "error":
+        ip_activity = df.groupby("ip")["timestamp"].count().sort_values(ascending=False)
+        plt.figure(figsize=(12, 8))
+        sns.barplot(x=ip_activity.index, y=ip_activity.values, palette="coolwarm")
+        plt.xticks(rotation=90)
+        plt.title("Anfragen pro IP")
+        plt.xlabel("IP-Adresse")
+        plt.ylabel("Anzahl der Anfragen")
+        plt.savefig(os.path.join(output_folder, f"{log_file_name}_ip_activity.png"))
+        plt.close()
 
     print(f"Visualisierungen gespeichert in: {output_folder}")
 
@@ -156,4 +194,3 @@ for log_file in all_files:
     autoencoder_anomalies.to_json(os.path.join(output_folder, "anomalies_autoencoder.json"), orient="records", lines=True)
 
 print("Analyse abgeschlossen.")
-
