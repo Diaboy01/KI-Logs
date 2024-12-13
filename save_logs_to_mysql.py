@@ -15,7 +15,6 @@ def log(message, level="INFO"):
 DB_HOST = "localhost"
 DB_USER = "root"
 DB_NAME = "log_generator"
-TABLE_NAME = "access_logs"
 
 # Verbindung zur MySQL-Datenbank herstellen
 def connect_to_db():
@@ -32,99 +31,172 @@ def connect_to_db():
         raise SystemExit
 
 # Tabelle erstellen, falls nicht vorhanden
-def create_table_if_not_exists():
+def create_table_if_not_exists(table_name, fields):
     conn = connect_to_db()
     cursor = conn.cursor()
+
+    columns = ", ".join([f"{field} {datatype}" for field, datatype in fields.items()])
     cursor.execute(f"""
-        CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
+        CREATE TABLE IF NOT EXISTS {table_name} (
             id INT AUTO_INCREMENT PRIMARY KEY,
-            ip VARCHAR(255),
-            timestamp DATETIME,
-            request VARCHAR(255),
-            status_code INT,
-            user_agent TEXT,
-            referrer TEXT,
-            log_file VARCHAR(255)
+            {columns}
         )
     """)
     conn.commit()
     cursor.close()
     conn.close()
-    log(f"Tabelle '{TABLE_NAME}' erstellt oder existiert bereits.", "INFO")
+    log(f"Tabelle '{table_name}' erstellt oder existiert bereits.", "INFO")
 
-# Funktion zur Verarbeitung einer Log-Datei
-def process_log_file(log_file):
-    data = []
-    log_pattern = re.compile(
-        r'(?P<ip>\S+)\s+-\s+-\s+\[(?P<timestamp>[^\]]+)]\s+"(?P<method>\S+)\s+(?P<url>\S+)\s+(?P<http_version>HTTP/\d\.\d)"\s+(?P<status>\d+)\s+(?P<size>\d+|-)\s+"(?P<referrer>[^"]*)"\s+"(?P<user_agent>[^"]*)"'
+# Log-Parsing-Funktionen
+def parse_access_log(line):
+    pattern = re.compile(
+        r'(?P<ip>\S+) - - \[(?P<timestamp>[^\]]+)] \"(?P<method>\S+) (?P<url>\S+) (?P<http_version>HTTP/\d\.\d)\" (?P<status>\d+) (?P<size>\d+|-) \"(?P<referrer>[^\"]*)\" \"(?P<user_agent>[^\"]*)\"'
     )
+    match = pattern.match(line)
+    if match:
+        data = match.groupdict()
+        data["timestamp"] = datetime.strptime(data["timestamp"], "%d/%b/%Y:%H:%M:%S %z")
+        data["size"] = None if data["size"] == "-" else int(data["size"])
+        return data
+    return None
 
+def parse_error_log(line):
+    pattern = re.compile(
+        r'(?P<timestamp>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(?P<severity>error)] (?P<module>[^:]+): \*(?P<pid>\d+) (?P<message>.+), client: (?P<client>[^,]+), server: (?P<server>[^,]+), request: \"(?P<request>[^"]+)\", host: \"(?P<host>[^"]+)\"'
+    )
+    match = pattern.match(line)
+    if match:
+        data = match.groupdict()
+        data["timestamp"] = datetime.strptime(data["timestamp"], "%Y/%m/%d %H:%M:%S")
+        return data
+    return None
+
+def parse_myfiles_log(line):
+    pattern = re.compile(
+        r'(?P<ip>\S+) - (?P<user>\S+) \[(?P<timestamp>[^\]]+)] \"(?P<method>\S+) (?P<url>\S+) (?P<http_version>HTTP/\d\.\d)\" (?P<status>\d+) (?P<size>\d+|-) \"(?P<referrer>[^\"]*)\" \"(?P<user_agent>[^\"]*)\"'
+    )
+    match = pattern.match(line)
+    if match:
+        data = match.groupdict()
+        data["timestamp"] = datetime.strptime(data["timestamp"], "%d/%b/%Y:%H:%M:%S %z")
+        data["size"] = None if data["size"] == "-" else int(data["size"])
+        return data
+    return None
+
+# Log-Datei verarbeiten
+def process_log_file(log_file, log_type):
+    data = []
     with open(log_file, "r") as file:
         for line in file:
-            match = log_pattern.match(line)
-            if match:
-                log_entry = match.groupdict()
+            if log_type == "myfiles":
+                entry = parse_myfiles_log(line)
+            elif log_type == "error":
+                entry = parse_error_log(line)
+            elif log_type == "access":
+                entry = parse_access_log(line)
+            else:
+                entry = None
 
-                # Zeitstempel in das richtige Format umwandeln
-                log_entry["timestamp"] = datetime.strptime(
-                    log_entry["timestamp"], "%d/%b/%Y:%H:%M:%S %z"
-                )
-
-                # Falls 'size' "-" ist, als None speichern
-                log_entry["size"] = None if log_entry["size"] == "-" else int(log_entry["size"])
-
-                # Log-Dateiname hinzufügen
-                log_entry["log_file"] = os.path.basename(log_file)
-
-                data.append(log_entry)
+            if entry:
+                entry["log_file"] = os.path.basename(log_file)
+                data.append(entry)
     return pd.DataFrame(data)
 
 # Daten in die MySQL-Datenbank einfügen
-def save_to_database(df):
+def save_to_database(df, table_name):
     conn = connect_to_db()
     cursor = conn.cursor()
 
-    for i, row in df.iterrows():
+    for _, row in df.iterrows():
+        columns = ", ".join(row.keys())
+        placeholders = ", ".join(["%s"] * len(row))
+        values = tuple(row)
+
         try:
-            cursor.execute(f"""
-                INSERT INTO {TABLE_NAME} 
-                (ip, timestamp, request, status_code, user_agent, referrer, log_file)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (
-                row["ip"],
-                row["timestamp"],
-                f"{row['method']} {row['url']}",
-                int(row["status"]),
-                row["user_agent"],
-                row["referrer"],
-                row["log_file"]
-            ))
+            cursor.execute(f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})", values)
         except mysql.connector.Error as err:
             log(f"Fehler beim Einfügen von Daten: {err}", "ERROR")
             raise SystemExit
+
     conn.commit()
     cursor.close()
     conn.close()
-    log(f"{len(df)} Datensätze in die Datenbank eingefügt.", "INFO")
+    log(f"{len(df)} Datensätze in die Tabelle '{table_name}' eingefügt.", "INFO")
 
 # Hauptablauf
 def main():
     log_folder = "share_logs"
+    log_definitions = {
+        "access": {
+            "table": "access_logs",
+            "fields": {
+                "ip": "VARCHAR(255)",
+                "timestamp": "DATETIME",
+                "method": "VARCHAR(10)",
+                "url": "VARCHAR(255)",
+                "http_version": "VARCHAR(10)",
+                "status": "INT",
+                "size": "INT",
+                "referrer": "TEXT",
+                "user_agent": "TEXT",
+                "log_file": "VARCHAR(255)"
+            }
+        },
+        "error": {
+            "table": "error_logs",
+            "fields": {
+                "timestamp": "DATETIME",
+                "severity": "VARCHAR(10)",
+                "module": "VARCHAR(255)",
+                "pid": "INT",
+                "message": "TEXT",
+                "client": "VARCHAR(255)",
+                "server": "VARCHAR(255)",
+                "request": "TEXT",
+                "host": "VARCHAR(255)",
+                "log_file": "VARCHAR(255)"
+            }
+        },
+        "myfiles": {
+            "table": "myfiles_logs",
+            "fields": {
+                "ip": "VARCHAR(255)",
+                "user": "VARCHAR(255)",
+                "timestamp": "DATETIME",
+                "method": "VARCHAR(10)",
+                "url": "VARCHAR(255)",
+                "http_version": "VARCHAR(10)",
+                "status": "INT",
+                "size": "INT",
+                "referrer": "TEXT",
+                "user_agent": "TEXT",
+                "log_file": "VARCHAR(255)"
+            }
+        }
+    }
+
     all_files = [os.path.join(log_folder, f) for f in os.listdir(log_folder) if os.path.isfile(os.path.join(log_folder, f))]
+
     if not all_files:
         log("Keine Log-Dateien im Verzeichnis gefunden.", "ERROR")
         raise SystemExit
 
-    create_table_if_not_exists()
+    for log_type, definition in log_definitions.items():
+        create_table_if_not_exists(definition["table"], definition["fields"])
 
     total_files = len(all_files)
     for idx, log_file in enumerate(all_files, start=1):
-        log(f"Verarbeite Datei {idx}/{total_files}: {log_file}", "INFO")
-        df = process_log_file(log_file)
+        log_type = "access" if "access" in log_file else "error" if "error" in log_file else "myfiles"
+        table_name = log_definitions[log_type]["table"]
+
+        log(f"Verarbeite Datei {idx}/{total_files}: {log_file} als Typ: {log_type}", "INFO")
+        df = process_log_file(log_file, log_type)
+
         if df.empty:
             log(f"Datei {log_file} enthält keine gültigen Daten.", "WARNING")
             continue
-        save_to_database(df)
+
+        save_to_database(df, table_name)
         log(f"Fortschritt: {idx}/{total_files} Dateien verarbeitet.", "INFO")
 
 if __name__ == "__main__":
