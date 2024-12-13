@@ -1,6 +1,7 @@
 # File: mysql_log_generator.py
 
 import mysql.connector
+from datetime import datetime
 
 # MySQL-Datenbankkonfiguration
 DB_HOST = "localhost"
@@ -78,9 +79,9 @@ def generate_logs(entry_count=DEFAULT_ENTRY_COUNT, id_range=DEFAULT_ID_RANGE, ti
             queries[log_type] += f"AND timestamp BETWEEN '{start_time}' AND '{end_time}'"
 
     log_files = {
-        "access": "access.log",
-        "error": "error.log",
-        "myfiles": "myfiles.log"
+        "access": "access" + datetime.now().strftime("%Y%m%d%H%M%S") + ".log",
+        "error": "error" + datetime.now().strftime("%Y%m%d%H%M%S") + ".log",
+        "myfiles": "myfiles" + datetime.now().strftime("%Y%m%d%H%M%S") + ".log"
     }
 
     for log_type, query in queries.items():
