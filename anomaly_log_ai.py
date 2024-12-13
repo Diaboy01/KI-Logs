@@ -10,9 +10,34 @@ def handle_anomalies(df, anomalies, log_type, log_file):
         print("Keine Anomalien gefunden.")
         return
 
-    for index, anomaly in anomalies.iterrows():
+    # Gefährlichkeitsbewertung für jede Anomalie hinzufügen
+    def calculate_severity(anomaly):
+        severity = 1  # Minimale Gefährlichkeit als Standardwert
+
+        # Beispielkriterien für Gefährlichkeitsbewertung
+        if anomaly.get("is_suspicious_path", 0) == 1:
+            severity += 6  # Verdächtiger Pfad
+        if anomaly.get("time_diff", 0) > 300:
+            severity += 2  # Lange Zeitdifferenz
+        if anomaly.get("ip_count", 0) < 2:
+            severity += 1  # IP-Adresse nur einmal verwendet 
+        if anomaly.get("status_code_encoded", -1) in [4, 5]:  # 4xx oder 5xx Fehlercodes
+            severity += 4  # Fehlerhafte Statuscodes
+        if anomaly.get("user_agent_length", 0) > 200:
+            severity += 2  # Ungewöhnlich langer User-Agent-String
+
+        return severity
+
+    # Gefährlichkeitsbewertung berechnen und Anomalien sortieren
+    anomalies["severity"] = anomalies.apply(calculate_severity, axis=1)
+    sorted_anomalies = anomalies.sort_values(by="severity", ascending=False)
+
+    for index, anomaly in sorted_anomalies.iterrows():
         print(f"Anomalie im {log_type}-Log gefunden (Datei: {log_file}, Zeile: {index + 1}):")
         print(anomaly)
+
+        # Gefährlichkeitsbewertung anzeigen
+        print(f"Gefährlichkeitsbewertung: {anomaly['severity']} von 10")
 
         # Zusätzliche Diagnose der Anomalie
         issues = []
@@ -22,6 +47,10 @@ def handle_anomalies(df, anomalies, log_type, log_file):
             issues.append("Ungewöhnlich lange Zeitdifferenz zwischen Anfragen")
         if anomaly.get("ip_count", 0) < 2:
             issues.append("IP-Adresse wurde nur einmal verwendet, möglicherweise ungewöhnlich")
+        if anomaly.get("status_code_encoded", -1) in [4, 5]:
+            issues.append("Fehlerhafte HTTP-Statuscodes (4xx oder 5xx)")
+        if anomaly.get("user_agent_length", 0) > 200:
+            issues.append("Ungewöhnlich langer User-Agent-String")
         if not issues:
             issues.append("Keine spezifischen Probleme identifiziert, aber als Anomalie markiert")
 
