@@ -85,12 +85,16 @@ def generate_logs(entry_count=DEFAULT_ENTRY_COUNT, id_range=DEFAULT_ID_RANGE, ti
     for log_type, query in queries.items():
         print(f"[INFO] Generiere {log_type}-Logs...")
         data = fetch_data_from_db(query)
+        
+        # Prüfen, ob genügend Einträge vorhanden sind
+        available_entries = len(data)
+        if available_entries < entry_count:
+            print(f"[WARNING] Für {log_type}-Logs sind nur {available_entries} Einträge verfügbar. "
+                  f"Angefordert: {entry_count}.")
+            entry_count = available_entries  # Nur so viele Einträge generieren, wie verfügbar sind
+
         log_entries = []
-
-        for i, row in enumerate(data):
-            if i >= entry_count:
-                break
-
+        for i, row in enumerate(data[:entry_count]):  # Nur bis zur verfügbaren Anzahl iterieren
             if log_type == "access":
                 log_entries.append(generate_access_log_entry(row))
             elif log_type == "error":
@@ -102,6 +106,7 @@ def generate_logs(entry_count=DEFAULT_ENTRY_COUNT, id_range=DEFAULT_ID_RANGE, ti
         with open(log_files[log_type], "w", encoding="utf-8") as file:
             file.write("\n".join(log_entries))
         print(f"[INFO] {len(log_entries)} {log_type}-Logs wurden in '{log_files[log_type]}' gespeichert.")
+
 
 if __name__ == "__main__":
     # Benutzerdefinierte Einstellungen
