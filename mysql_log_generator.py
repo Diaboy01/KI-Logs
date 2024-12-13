@@ -39,7 +39,7 @@ def fetch_data_from_db(query):
 
 # Log-Einträge generieren
 def generate_access_log_entry(row):
-    timestamp = datetime.datetime.now().strftime("%d/%b/%Y:%H:%M:%S +0000")
+    timestamp = row['timestamp'].strftime("%d/%b/%Y:%H:%M:%S +0000")
     log_entry = (
         f"{row['ip']} - {row.get('user', '-')} [{timestamp}] \"{row['method']} {row['url']} {row['http_version']}\" "
         f"{row['status']} {row['size']} \"{row['referrer']}\" \"{row['user_agent']}\""
@@ -47,7 +47,7 @@ def generate_access_log_entry(row):
     return log_entry
 
 def generate_error_log_entry(row):
-    timestamp = datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+    timestamp = row['timestamp'].strftime("%Y/%m/%d %H:%M:%S")
     log_entry = (
         f"{timestamp} [error] {row['module']}: *{row['pid']} {row['message']}, client: {row['client']}, "
         f"server: {row['server']}, request: \"{row['request']}\", host: \"{row['host']}\""
@@ -55,7 +55,7 @@ def generate_error_log_entry(row):
     return log_entry
 
 def generate_myfiles_log_entry(row):
-    timestamp = datetime.datetime.now().strftime("%d/%b/%Y:%H:%M:%S +0000")
+    timestamp = row['timestamp'].strftime("%d/%b/%Y:%H:%M:%S +0000")
     log_entry = (
         f"{row['ip']} - {row['user']} [{timestamp}] \"{row['method']} {row['url']} {row['http_version']}\" "
         f"{row['status']} {row['size']} \"{row['referrer']}\" \"{row['user_agent']}\""
@@ -107,6 +107,6 @@ if __name__ == "__main__":
     # Benutzerdefinierte Einstellungen
     entry_count = 100  # Anzahl der Einträge
     id_range = (1, 500)  # ID-Bereich (1 bis 500)
-    time_span = ("2024-01-01 00:00:00", "2024-12-31 23:59:59")  # Zeitspanne (optional)
+    time_span = ("2022-01-01 00:00:00", "2024-12-31 23:59:59")  # Zeitspanne (optional)
 
     generate_logs(entry_count=entry_count, id_range=id_range, time_span=time_span)
