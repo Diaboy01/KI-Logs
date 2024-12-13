@@ -55,18 +55,27 @@ def create_table_if_not_exists():
 # Funktion zur Verarbeitung einer Log-Datei
 def process_log_file(log_file):
     data = []
+    log_pattern = re.compile(
+        r'(?P<ip>\S+)\s+-\s+-\s+\[(?P<timestamp>[^\]]+)]\s+"(?P<method>\S+)\s+(?P<url>\S+)\s+(?P<http_version>HTTP/\d\.\d)"\s+(?P<status>\d+)\s+(?P<size>\d+|-)\s+"(?P<referrer>[^"]*)"\s+"(?P<user_agent>[^"]*)"'
+    )
+
     with open(log_file, "r") as file:
         for line in file:
-            match = re.match(
-                r'(?P<ip>\S+) - - \[(?P<timestamp>[^\]]+)] "(?P<method>\S+) (?P<url>\S+) (?P<http_version>\S+)" (?P<status>\d+) (?P<size>\d+) "(?P<referrer>[^"]*)" "(?P<user_agent>[^"]*)"', 
-                line
-            )
+            match = log_pattern.match(line)
             if match:
                 log_entry = match.groupdict()
+
+                # Zeitstempel in das richtige Format umwandeln
                 log_entry["timestamp"] = datetime.strptime(
                     log_entry["timestamp"], "%d/%b/%Y:%H:%M:%S %z"
                 )
+
+                # Falls 'size' "-" ist, als None speichern
+                log_entry["size"] = None if log_entry["size"] == "-" else int(log_entry["size"])
+
+                # Log-Dateiname hinzufügen
                 log_entry["log_file"] = os.path.basename(log_file)
+
                 data.append(log_entry)
     return pd.DataFrame(data)
 
@@ -82,8 +91,13 @@ def save_to_database(df):
                 (ip, timestamp, request, status_code, user_agent, referrer, log_file)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
             """, (
-                row["ip"], row["timestamp"], f"{row['method']} {row['url']}",
-                row["status"], row["user_agent"], row["referrer"], row["log_file"]
+                row["ip"],
+                row["timestamp"],
+                f"{row['method']} {row['url']}",
+                int(row["status"]),
+                row["user_agent"],
+                row["referrer"],
+                row["log_file"]
             ))
         except mysql.connector.Error as err:
             log(f"Fehler beim Einfügen von Daten: {err}", "ERROR")
