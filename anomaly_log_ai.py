@@ -16,13 +16,13 @@ def handle_anomalies(df, anomalies, log_type, log_file):
 
         # Beispielkriterien für Gefährlichkeitsbewertung
         if anomaly.get("is_suspicious_path", 0) == 1:
-            severity += 6  # Verdächtiger Pfad
+            severity += 4  # Verdächtiger Pfad
         if anomaly.get("time_diff", 0) > 300:
             severity += 2  # Lange Zeitdifferenz
         if anomaly.get("ip_count", 0) < 2:
-            severity += 1  # IP-Adresse nur einmal verwendet 
+            severity += 1  # IP-Adresse nur einmal verwendet (niedrige Priorität)
         if anomaly.get("status_code_encoded", -1) in [4, 5]:  # 4xx oder 5xx Fehlercodes
-            severity += 4  # Fehlerhafte Statuscodes
+            severity += 3  # Fehlerhafte Statuscodes
         if anomaly.get("user_agent_length", 0) > 200:
             severity += 2  # Ungewöhnlich langer User-Agent-String
 
@@ -82,7 +82,18 @@ if __name__ == "__main__":
             print(f"Überspringe Datei: {log_file}")
             continue
 
-        log_type = "access" if "access" in log_file else "error" if "error" in log_file else "myfiles"
+        if "myfiles" in os.path.basename(log_file):
+            log_type = "myfiles"
+        elif "access" in os.path.basename(log_file):
+            log_type = "access"
+        elif "error" in os.path.basename(log_file):
+            log_type = "error"
+        else:
+            log_type = "unknown"
+
+        if log_type == "unknown":
+            print(f"Warnung: Der Datei-Typ für {log_file} konnte nicht bestimmt werden. Überspringe diese Datei.")
+            continue
 
         print(f"Verarbeite Datei: {log_file} als Typ: {log_type}")
 

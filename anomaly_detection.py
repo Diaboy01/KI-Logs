@@ -98,7 +98,14 @@ for log_file in all_files:
         print(f"Überspringe Datei: {log_file}")
         continue
 
-    log_type = "access" if "access" in log_file else "error" if "error" in log_file else "myfiles"
+    if "myfiles" in os.path.basename(log_file):
+        log_type = "myfiles"
+    elif "access" in os.path.basename(log_file):
+        log_type = "access"
+    elif "error" in os.path.basename(log_file):
+        log_type = "error"
+    else:
+        log_type = "unknown"
 
     print(f"Verarbeite Datei: {log_file} als Typ: {log_type}")
 
