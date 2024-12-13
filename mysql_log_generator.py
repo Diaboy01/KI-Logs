@@ -1,5 +1,6 @@
+# File: mysql_log_generator.py
+
 import mysql.connector
-import datetime
 
 # MySQL-Datenbankkonfiguration
 DB_HOST = "localhost"
