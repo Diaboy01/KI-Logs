@@ -165,26 +165,63 @@ for log_file in all_files:
     os.makedirs(output_folder, exist_ok=True)
 
     # Rekonstruktionsfehler visualisieren
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(12, 6))
     plt.plot(range(len(reconstruction_error)), reconstruction_error, label="Rekonstruktionsfehler")
     plt.axhline(y=threshold, color='r', linestyle='--', label="Threshold")
     plt.xlabel("Zeile im Log")
     plt.ylabel("Rekonstruktionsfehler")
-    plt.title(f"Anomalien in {log_file}")
+    plt.title(f"Anomalien in {log_file} (Autoencoder)")
     plt.legend()
-    plt.savefig(os.path.join(output_folder, f"{log_file_name}_errors.png"))
+    plt.grid(True)
+    plt.savefig(os.path.join(output_folder, f"{log_file_name}_reconstruction_errors.png"))
     plt.close()
 
     # Heatmap der IP-Aktivitäten (nur für Access- und MyFiles-Logs)
     if log_type != "error":
         ip_activity = df.groupby("ip")["timestamp"].count().sort_values(ascending=False)
         plt.figure(figsize=(12, 8))
-        sns.barplot(x=ip_activity.index, y=ip_activity.values, palette="coolwarm")
+        sns.barplot(x=ip_activity.index[:20], y=ip_activity.values[:20], palette="coolwarm")
         plt.xticks(rotation=90)
-        plt.title("Anfragen pro IP")
+        plt.title(f"Top 20 IP-Adressen nach Anzahl der Anfragen in {log_file}")
         plt.xlabel("IP-Adresse")
-        plt.ylabel("Anzahl der Anfragen")
+        plt.ylabel("Anfragen")
+        plt.grid(axis='y')
         plt.savefig(os.path.join(output_folder, f"{log_file_name}_ip_activity.png"))
+        plt.close()
+
+    # Anomalien spezifisch visualisieren
+    if log_type == "error":
+        # Scatterplot für Error Logs
+        plt.figure(figsize=(10, 6))
+        plt.scatter(df["pid"], df["message_length"], c=(df["anomaly_score"] == -1), cmap="coolwarm", alpha=0.7)
+        plt.title(f"Anomalien in {log_file} (Error Logs)")
+        plt.xlabel("PID")
+        plt.ylabel("Länge der Fehlermeldung")
+        plt.grid(True)
+        plt.savefig(os.path.join(output_folder, f"{log_file_name}_error_anomalies.png"))
+        plt.close()
+
+        # Fehlerhäufigkeit nach Zeit darstellen
+        plt.figure(figsize=(12, 6))
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors='coerce')
+        time_anomalies = df[df["anomaly_score"] == -1].groupby(df["timestamp"].dt.hour).size()
+        plt.bar(time_anomalies.index, time_anomalies.values, color="orange", alpha=0.7)
+        plt.title(f"Häufigkeit der Anomalien nach Stunden in {log_file}")
+        plt.xlabel("Stunde des Tages")
+        plt.ylabel("Anzahl der Anomalien")
+        plt.grid(axis='y')
+        plt.savefig(os.path.join(output_folder, f"{log_file_name}_time_error_anomalies.png"))
+        plt.close()
+
+    else:
+        # Scatterplot für Access/MyFiles Logs
+        plt.figure(figsize=(10, 6))
+        plt.scatter(df["time_diff"], df["status_code_encoded"], c=(df["anomaly_score"] == -1), cmap="coolwarm", alpha=0.7)
+        plt.title(f"Anomalien in {log_file} (Access/MyFiles Logs)")
+        plt.xlabel("Zeitunterschied zwischen Anfragen (Sekunden)")
+        plt.ylabel("Status-Code (kodiert)")
+        plt.grid(True)
+        plt.savefig(os.path.join(output_folder, f"{log_file_name}_access_anomalies.png"))
         plt.close()
 
     print(f"Visualisierungen gespeichert in: {output_folder}")
