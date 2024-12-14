@@ -40,7 +40,7 @@ def clean_attack_entry(entry):
     return re.sub(r"^\d+\.\s*|`$", "", entry).strip()
 
 # Angriffsmuster in die URL integrieren
-def integrate_attack_in_url(original_url, attack_patterns):
+def integrate_attack_in_url(original_url, attack_patterns, http_exploits):
     parsed_url = urlparse(original_url)
     query_params = parse_qs(parsed_url.query)
 
@@ -54,6 +54,12 @@ def integrate_attack_in_url(original_url, attack_patterns):
             query_params[random.choice(["param", "action", "id"])] = attack_pattern
         else:
             query_params[random.choice(["malicious", "exploit", "test"])] = attack_pattern
+
+    # HTTP Exploits ergänzen
+    if http_exploits:
+        for exploit in http_exploits:
+            if "GET" in exploit or "POST" in exploit:
+                query_params[random.choice(["header", "payload"])] = exploit
 
     new_query = urlencode(query_params, doseq=True)
     parsed_url = parsed_url._replace(query=new_query)
@@ -74,8 +80,9 @@ def clean_redundant_get_requests(url):
     return " ".join(cleaned_parts)
 
 # Log-Eintrag generieren (basiert auf Angriffsmuster und Log-Struktur)
-def generate_malicious_log(base_row, attack_entries):
+def generate_malicious_log(base_row, attack_entries, http_exploits):
     attack_entries = [clean_attack_entry(entry) for entry in attack_entries]
+    http_exploits = [clean_attack_entry(exploit) for exploit in http_exploits]
 
     # Standardwerte setzen, falls Felder fehlen
     base_row = {
@@ -97,7 +104,7 @@ def generate_malicious_log(base_row, attack_entries):
     }
 
     # Angriffsmuster in die URL einfügen
-    new_url = integrate_attack_in_url(base_row['url'], attack_entries)
+    new_url = integrate_attack_in_url(base_row['url'], attack_entries, http_exploits)
     new_url = clean_redundant_get_requests(new_url)
 
     timestamp = base_row['timestamp'].strftime("%d/%b/%Y:%H:%M:%S +0000")
@@ -142,9 +149,12 @@ def generate_malicious_logs(entry_count=50):
             attack_type = random.choice(list(attack_patterns.keys()))
             attack_entries = random.sample(attack_patterns[attack_type], k=random.randint(1, 3))
 
-            log_entry = generate_malicious_log(base_row, attack_entries)
+            # HTTP Exploits speziell einfügen
+            http_exploits = random.sample(attack_patterns.get("http_exploits", []), k=random.randint(0, 2))
+
+            log_entry = generate_malicious_log(base_row, attack_entries, http_exploits)
         else:
-            log_entry = generate_malicious_log(base_row, [])
+            log_entry = generate_malicious_log(base_row, [], [])
 
         malicious_logs.append(log_entry)
 
