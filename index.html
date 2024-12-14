@@ -190,6 +190,8 @@
                 resultsDiv.innerHTML = "<h2>Ergebnisse:</h2>";
 
                 data.results.forEach(result => {
+                    // Result komplett in Browser Konsole ausgeben
+                    window.console.log(result);
                     const div = document.createElement("div");
                     div.className = `log-entry ${result.malicious >= 0.5 ? "malicious" : "normal"}`;
                     div.textContent = result.log;
