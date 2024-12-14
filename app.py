@@ -149,11 +149,9 @@ async def random_value(attribute: str):
         else:
             return {"value": "Unbekanntes Attribut"}
     except Exception as e:
-        return {"error": f"Fehler beim Abrufen des Attributs: {str(e)}"}
+        return {"error": str(e)}
     finally:
-        if 'conn' in locals() and conn.is_connected():
-            conn.close()
-
+        conn.close()
 
 
 
