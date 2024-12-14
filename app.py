@@ -9,6 +9,7 @@ import pandas as pd
 
 # FastAPI App erstellen
 app = FastAPI()
+favicon_path = 'favicon.ico'
 
 # CORS-Konfiguration hinzufügen
 app.add_middleware(
@@ -26,6 +27,10 @@ vectorizer = joblib.load("log_vectorizer.pkl")
 # API-Klassen
 class LogRequest(BaseModel):
     logs: list
+
+@app.get('/favicon.ico', include_in_schema=False)
+async def favicon():
+    return FileResponse(favicon_path)
 
 @app.get("/")
 async def serve_html():

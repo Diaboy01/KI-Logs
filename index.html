@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Log-Klassifikation</title>
+    <icon href="favicon.ico" type="image/x-icon">   
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -35,6 +36,10 @@
             border: 1px solid #ccc;
             border-radius: 4px;
             font-size: 14px;
+        }
+        input[type="file"] {
+            margin-top: 10px;
+            padding: 10px;
         }
         button {
             display: block;
@@ -80,10 +85,24 @@
     <form id="log-form">
         <label for="log-text">Log-Einträge eingeben (jeder Eintrag in einer neuen Zeile):</label>
         <textarea id="log-text" name="log-text" rows="10" placeholder="Hier Log-Einträge eingeben..." required></textarea>
+        <label for="log-file">Oder Log-Datei hochladen:</label>
+        <input type="file" id="log-file" accept=".log">
         <button type="submit">Analyse starten</button>
     </form>
     <div id="results"></div>
     <script>
+        document.getElementById("log-file").addEventListener("change", function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const content = e.target.result;
+                    document.getElementById("log-text").value = content;
+                };
+                reader.readAsText(file);
+            }
+        });
+
         document.getElementById("log-form").addEventListener("submit", async function(event) {
             event.preventDefault();
             const logText = document.getElementById("log-text").value;
