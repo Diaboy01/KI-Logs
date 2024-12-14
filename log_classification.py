@@ -6,6 +6,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, accuracy_score
 import joblib
+import re
 
 # Pfade zu den Dateien
 normal_logs_path = "myfiles-access_anon.log"
@@ -14,8 +15,15 @@ bad_logs_path = "malicious_myfiles_20241214143634.log"
 # Variablen zur Steuerung der Verarbeitung
 lines_to_read = 100000  # Anzahl der Zeilen, die pro Datei gelesen werden
 
-# Funktion zum Lesen einer Log-Datei
+# Funktion zur Vorverarbeitung der Logs
+def preprocess_logs(logs):
+    logs["log"] = logs["log"].apply(lambda x: re.sub(r'\d+\.\d+\.\d+\.\d+', 'IP', x))  # IP-Adressen maskieren
+    logs["log"] = logs["log"].apply(lambda x: re.sub(r'\[[^\]]+\]', 'TIMESTAMP', x))  # Zeitstempel maskieren
+    logs["log"] = logs["log"].apply(lambda x: re.sub(r'"[^"]*"', 'REQUEST', x))  # HTTP-Request maskieren
+    logs["log"] = logs["log"].apply(lambda x: re.sub(r'[^\w\s]', '', x))  # Sonderzeichen entfernen
+    return logs
 
+# Funktion zum Lesen einer Log-Datei
 def read_logs(file_path, num_lines, label):
     with open(file_path, "r", encoding="utf-8", errors="ignore") as file:
         lines = [line.strip() for _, line in zip(range(num_lines), file)]
@@ -30,9 +38,13 @@ bad_logs = read_logs(bad_logs_path, lines_to_read, 1)
 print("[INFO] Kombinieren der Daten...")
 data = pd.concat([normal_logs, bad_logs]).sample(frac=1).reset_index(drop=True)
 
+# Vorverarbeitung der Logs
+print("[INFO] Vorverarbeitung der Logs...")
+data = preprocess_logs(data)
+
 # Feature-Extraktion mit TF-IDF
 print("[INFO] Extrahieren der Merkmale mit TF-IDF...")
-vectorizer = TfidfVectorizer(max_features=10000, ngram_range=(1, 2))
+vectorizer = TfidfVectorizer(max_features=10000, ngram_range=(2, 3), stop_words='english')
 X = vectorizer.fit_transform(data["log"])
 y = data["label"]
 
@@ -56,4 +68,3 @@ joblib.dump(model, "log_classifier.pkl")
 joblib.dump(vectorizer, "log_vectorizer.pkl")
 
 print("[INFO] Fertig. Modell und Vektorisierer wurden gespeichert.")
-
