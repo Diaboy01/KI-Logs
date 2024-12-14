@@ -40,22 +40,24 @@ def clean_attack_entry(entry):
     return re.sub(r"^\d+\.\s*|`$", "", entry).strip()
 
 # Angriffsmuster in die URL integrieren
-def integrate_attack_in_url(original_url, attack_pattern):
+def integrate_attack_in_url(original_url, attack_patterns):
     parsed_url = urlparse(original_url)
     query_params = parse_qs(parsed_url.query)
 
-    if "GET " in attack_pattern:
-        attack_pattern = attack_pattern.replace("GET ", "")
+    # Dynamische Auswahl von Angriffsmustern und Parametern
+    for attack_pattern in attack_patterns:
+        if "=" in attack_pattern and not attack_pattern.startswith("GET"):
+            key, value = attack_pattern.split("=", 1)
+            query_params[key] = value
+        elif "GET " in attack_pattern:
+            attack_pattern = attack_pattern.replace("GET ", "")
+            query_params[random.choice(["param", "action", "id"])] = attack_pattern
+        else:
+            query_params[random.choice(["malicious", "exploit", "test"])] = attack_pattern
 
-    if not query_params:
-        new_url = f"{original_url}&{attack_pattern}"
-    else:
-        query_params["malicious_param"] = attack_pattern
-        new_query = urlencode(query_params, doseq=True)
-        parsed_url = parsed_url._replace(query=new_query)
-        new_url = urlunparse(parsed_url)
-
-    return new_url
+    new_query = urlencode(query_params, doseq=True)
+    parsed_url = parsed_url._replace(query=new_query)
+    return urlunparse(parsed_url)
 
 # Doppelte GET-Anfragen in der URL bereinigen
 def clean_redundant_get_requests(url):
@@ -72,25 +74,30 @@ def clean_redundant_get_requests(url):
     return " ".join(cleaned_parts)
 
 # Log-Eintrag generieren (basiert auf Angriffsmuster und Log-Struktur)
-def generate_malicious_log(base_row, attack_entry):
-    attack_entry = clean_attack_entry(attack_entry)
+def generate_malicious_log(base_row, attack_entries):
+    attack_entries = [clean_attack_entry(entry) for entry in attack_entries]
 
     # Standardwerte setzen, falls Felder fehlen
     base_row = {
         'ip': base_row.get('ip', '-'),
         'user': base_row.get('user', '-'),
         'timestamp': base_row.get('timestamp', datetime.now()),
-        'method': base_row.get('method', 'GET'),
+        'method': base_row.get('method', random.choice(['GET', 'POST', 'DELETE'])),
         'url': base_row.get('url', '/'),
         'http_version': base_row.get('http_version', 'HTTP/1.1'),
         'status': base_row.get('status', 200),
         'size': base_row.get('size', 617),
-        'referrer': base_row.get('referrer', '-'),
-        'user_agent': base_row.get('user_agent', 'Mozilla/5.0')
+        'referrer': base_row.get('referrer', 'https://example.com'),
+        'user_agent': base_row.get('user_agent', random.choice([
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'curl/7.68.0',
+            'wget/1.20.3 (linux-gnu)',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36'
+        ]))
     }
 
     # Angriffsmuster in die URL einfügen
-    new_url = integrate_attack_in_url(base_row['url'], attack_entry)
+    new_url = integrate_attack_in_url(base_row['url'], attack_entries)
     new_url = clean_redundant_get_requests(new_url)
 
     timestamp = base_row['timestamp'].strftime("%d/%b/%Y:%H:%M:%S +0000")
@@ -133,11 +140,11 @@ def generate_malicious_logs(entry_count=50):
         base_row = random.choice(base_logs)
         if should_generate_attack_log(attack_probability=0.2):
             attack_type = random.choice(list(attack_patterns.keys()))
-            attack_entry = random.choice(attack_patterns[attack_type])
+            attack_entries = random.sample(attack_patterns[attack_type], k=random.randint(1, 3))
 
-            log_entry = generate_malicious_log(base_row, attack_entry)
+            log_entry = generate_malicious_log(base_row, attack_entries)
         else:
-            log_entry = generate_malicious_log(base_row, "")
+            log_entry = generate_malicious_log(base_row, [])
 
         malicious_logs.append(log_entry)
 
