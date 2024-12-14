@@ -44,16 +44,32 @@ def integrate_attack_in_url(original_url, attack_pattern):
     parsed_url = urlparse(original_url)
     query_params = parse_qs(parsed_url.query)
 
+    if "GET " in attack_pattern:
+        attack_pattern = attack_pattern.replace("GET ", "")
+
     if not query_params:
-        new_url = f"{original_url}?{attack_pattern}"
+        new_url = f"{original_url}&{attack_pattern}"
     else:
-        query_key = attack_pattern.split('=')[0] if '=' in attack_pattern else 'malicious_param'
-        query_params[query_key] = attack_pattern.split('=')[1:] if '=' in attack_pattern else [attack_pattern]
+        query_params["malicious_param"] = attack_pattern
         new_query = urlencode(query_params, doseq=True)
         parsed_url = parsed_url._replace(query=new_query)
         new_url = urlunparse(parsed_url)
 
     return new_url
+
+# Doppelte GET-Anfragen in der URL bereinigen
+def clean_redundant_get_requests(url):
+    parts = url.split(" ")
+    cleaned_parts = []
+    seen_get = False
+    for part in parts:
+        if part.startswith("GET"):
+            if not seen_get:
+                seen_get = True
+                cleaned_parts.append(part)
+        else:
+            cleaned_parts.append(part)
+    return " ".join(cleaned_parts)
 
 # Log-Eintrag generieren (basiert auf Angriffsmuster und Log-Struktur)
 def generate_malicious_log(base_row, attack_entry):
@@ -75,6 +91,7 @@ def generate_malicious_log(base_row, attack_entry):
 
     # Angriffsmuster in die URL einfügen
     new_url = integrate_attack_in_url(base_row['url'], attack_entry)
+    new_url = clean_redundant_get_requests(new_url)
 
     timestamp = base_row['timestamp'].strftime("%d/%b/%Y:%H:%M:%S +0000")
     log_entry = (
