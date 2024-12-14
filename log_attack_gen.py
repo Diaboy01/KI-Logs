@@ -4,8 +4,13 @@ import os
 import requests
 import re
 import random
+import time
 import mysql.connector
 from collections import Counter
+
+# Konfigurierbare Wartezeiten
+SHORT_DELAY = 1  # Sekunden zwischen erfolgreichen Anfragen
+LONG_DELAY = 30  # Sekunden bei einem Fehler, bevor erneut versucht wird
 
 # Logging-Funktion
 def log(message, level="INFO"):
@@ -96,11 +101,20 @@ def send_chat_request(prompt):
         ]
     }
     url = f"{AZURE_OPENAI_ENDPOINT}/openai/deployments/{GPT_DEPLOYMENT_NAME}/chat/completions?api-version={AZURE_API_VERSION}"
-    response = requests.post(url, headers=headers, json=payload)
-    response.raise_for_status()
-    result = response.json()["choices"][0]["message"]["content"]
-    log(f"Antwort erhalten: {result}", "INFO")  # Log die Antwort des Modells
-    return result
+
+    while True:
+        try:
+            log(f"Sende Anfrage an Azure OpenAI mit Prompt: {prompt}", "INFO")
+            response = requests.post(url, headers=headers, json=payload)
+            response.raise_for_status()
+            data = response.json()
+            log(f"Antwort erhalten: {data['choices'][0]['message']['content']}", "INFO")
+            time.sleep(SHORT_DELAY)  # Kurze Pause nach einer erfolgreichen Anfrage
+            return data["choices"][0]["message"]["content"]
+        except requests.exceptions.RequestException as e:
+            log(f"Fehler bei der Anfrage: {e}", "ERROR")
+            log("Warte auf erneute Anfrage...", "INFO")
+            time.sleep(LONG_DELAY)  # Lange Pause bei einem Fehler
 
 # Einträge generieren
 def generate_attack_patterns(attack_type, table_name, prompt_template, regex):
@@ -136,7 +150,6 @@ def generate_attack_patterns(attack_type, table_name, prompt_template, regex):
         if new_entries:
             save_entries_to_db(table_name, new_entries)
         log(f"{len(existing_entries)} Einträge für '{attack_type}' generiert.", "INFO")
-
 
 # Hauptprogramm
 if __name__ == "__main__":
@@ -177,7 +190,6 @@ if __name__ == "__main__":
             "regex": r"(?is).*(GET|POST|PUT|DELETE|HEAD|OPTIONS|TRACE|CONNECT).*HTTP\/1\.[01].*"
         }
     ]
-
 
     print("Welche Angriffsmuster sollen generiert werden?")
     for idx, config in enumerate(attack_configs):
