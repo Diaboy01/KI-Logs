@@ -2,6 +2,7 @@ import mysql.connector
 from datetime import datetime
 import random
 import re
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 # MySQL-Datenbankkonfiguration
 DB_HOST = "localhost"
@@ -38,6 +39,21 @@ def fetch_data_from_table(table_name):
 def clean_attack_entry(entry):
     return re.sub(r"^\d+\.\s*|`$", "", entry).strip()
 
+# Angriffsmuster in die URL integrieren
+def integrate_attack_in_url(original_url, attack_pattern):
+    parsed_url = urlparse(original_url)
+    query_params = parse_qs(parsed_url.query)
+
+    if not query_params:
+        new_url = f"{original_url}&{attack_pattern}"
+    else:
+        query_params["malicious_param"] = attack_pattern
+        new_query = urlencode(query_params, doseq=True)
+        parsed_url = parsed_url._replace(query=new_query)
+        new_url = urlunparse(parsed_url)
+
+    return new_url
+
 # Log-Eintrag generieren (basiert auf Angriffsmuster und Log-Struktur)
 def generate_malicious_log(base_row, attack_entry):
     attack_entry = clean_attack_entry(attack_entry)
@@ -57,7 +73,7 @@ def generate_malicious_log(base_row, attack_entry):
     }
 
     # Angriffsmuster in die URL einfügen
-    new_url = base_row['url'] + ("?" if "?" not in base_row['url'] else "&") + attack_entry
+    new_url = integrate_attack_in_url(base_row['url'], attack_entry)
 
     timestamp = base_row['timestamp'].strftime("%d/%b/%Y:%H:%M:%S +0000")
     log_entry = (
@@ -66,6 +82,10 @@ def generate_malicious_log(base_row, attack_entry):
     )
 
     return log_entry
+
+# Wahrscheinlichkeitsfunktion für Angriffs-Logs
+def should_generate_attack_log(attack_probability=0.1):
+    return random.random() < attack_probability
 
 # Böse Logs generieren und in Dateien speichern
 def generate_malicious_logs(entry_count=50):
@@ -93,10 +113,14 @@ def generate_malicious_logs(entry_count=50):
 
     for _ in range(entry_count):
         base_row = random.choice(base_logs)
-        attack_type = random.choice(list(attack_patterns.keys()))
-        attack_entry = random.choice(attack_patterns[attack_type])
+        if should_generate_attack_log(attack_probability=0.2):
+            attack_type = random.choice(list(attack_patterns.keys()))
+            attack_entry = random.choice(attack_patterns[attack_type])
 
-        log_entry = generate_malicious_log(base_row, attack_entry)
+            log_entry = generate_malicious_log(base_row, attack_entry)
+        else:
+            log_entry = generate_malicious_log(base_row, "")
+
         malicious_logs.append(log_entry)
 
     # In Datei speichern
