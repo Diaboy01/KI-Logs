@@ -7,139 +7,115 @@
     <style>
         body {
             font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
             margin: 20px;
+            line-height: 1.6;
         }
-        .container {
+        h1 {
+            text-align: center;
+            color: #007BFF;
+        }
+        form {
             max-width: 600px;
-            margin: auto;
+            margin: 0 auto;
+            padding: 20px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
         }
         textarea {
             width: 100%;
-            height: 150px;
-            margin: 10px 0;
             padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
         }
         button {
+            display: block;
+            width: 100%;
+            padding: 10px;
             background-color: #007BFF;
-            color: white;
+            color: #fff;
             border: none;
-            padding: 10px 20px;
-            cursor: pointer;
+            border-radius: 4px;
             font-size: 16px;
+            cursor: pointer;
         }
         button:hover {
             background-color: #0056b3;
         }
-        .result {
-            margin-top: 20px;
-            font-weight: bold;
+        #results {
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .log-entry {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+        }
+        .normal {
+            background-color: #d4edda;
+            color: #155724;
+            border-left: 5px solid #28a745;
+        }
+        .malicious {
+            background-color: #f8d7da;
+            color: #721c24;
+            border-left: 5px solid #dc3545;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Log-Klassifikation</h1>
-        <p>Fügen Sie Ihre Log-Einträge unten ein, um herauszufinden, ob sie "normal" oder "böse" sind.</p>
-        
-        <label for="log-input">Log-Einträge:</label>
-        <textarea id="log-input" placeholder="Fügen Sie hier Ihre Log-Einträge ein..."></textarea>
-        
-        <label for="model-file">Modell-Datei (.pkl) hochladen:</label>
-        <input type="file" id="model-file" accept=".pkl"><br><br>
-        
-        <label for="vectorizer-file">Vektorisierer-Datei (.pkl) hochladen:</label>
-        <input type="file" id="vectorizer-file" accept=".pkl"><br><br>
-        
-        <button id="classify-button">Klassifizieren</button>
-        
-        <div class="result" id="result"></div>
-    </div>
+    <h1>Log-Klassifikation</h1>
+    <form id="log-form">
+        <label for="log-text">Log-Einträge eingeben (jeder Eintrag in einer neuen Zeile):</label>
+        <textarea id="log-text" name="log-text" rows="10" placeholder="Hier Log-Einträge eingeben..." required></textarea>
+        <button type="submit">Analyse starten</button>
+    </form>
+    <div id="results"></div>
+    <script>
+        document.getElementById("log-form").addEventListener("submit", async function(event) {
+            event.preventDefault();
+            const logText = document.getElementById("log-text").value;
 
-    <script src="https://cdn.jsdelivr.net/pyodide/v0.23.0/full/pyodide.js"></script>
-    <script type="text/javascript">
-        
-async function loadPyodideAndClassify() {
-    let pyodide = await loadPyodide({
-        indexURL: "https://cdn.jsdelivr.net/pyodide/v0.23.0/full/"
-    });
+            // Log-Einträge an das Backend senden
+            const response = await fetch("http://127.0.0.1:8000/predict-text", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ logs: logText.split("\n") })
+            });
 
-    // Lade die erforderlichen Pakete
-    await pyodide.loadPackage(["numpy", "pandas", "scikit-learn", "joblib"]);
+            if (response.ok) {
+                const data = await response.json();
+                const resultsDiv = document.getElementById("results");
+                resultsDiv.innerHTML = "<h2>Ergebnisse:</h2>";
 
-    document.getElementById("classify-button").addEventListener("click", async () => {
-        const logInput = document.getElementById("log-input").value.trim();
-        const modelFile = document.getElementById("model-file").files[0];
-        const vectorizerFile = document.getElementById("vectorizer-file").files[0];
+                data.results.forEach(result => {
+                    const div = document.createElement("div");
+                    div.className = `log-entry ${result.malicious >= 0.5 ? "malicious" : "normal"}`;
+                    div.textContent = result.log;
+                    resultsDiv.appendChild(div);
 
-        if (!logInput || !modelFile || !vectorizerFile) {
-            alert("Bitte geben Sie Log-Einträge ein und laden Sie beide Dateien hoch.");
-            return;
-        }
-
-        const modelReader = new FileReader();
-        const vectorizerReader = new FileReader();
-
-        modelReader.onload = async function(event) {
-            const modelArrayBuffer = event.target.result;
-            const modelUint8Array = new Uint8Array(modelArrayBuffer);
-            pyodide.FS.writeFile('model.pkl', modelUint8Array);
-
-            vectorizerReader.onload = async function(event) {
-                const vectorizerArrayBuffer = event.target.result;
-                const vectorizerUint8Array = new Uint8Array(vectorizerArrayBuffer);
-                pyodide.FS.writeFile('vectorizer.pkl', vectorizerUint8Array);
-
-                const logsArray = logInput.split("\n").map(log => log.trim());
-
-                const pythonCode = `
-import joblib
-from sklearn.feature_extraction.text import TfidfVectorizer
-
-# Modell und Vektorisierer laden
-model = joblib.load('model.pkl')
-vectorizer = joblib.load('vectorizer.pkl')
-
-# Log-Einträge verarbeiten
-logs = logs_input_js.split("\\n")
-log_vectors = vectorizer.transform(logs)
-
-# Vorhersagen treffen
-predictions = model.predict_proba(log_vectors)
-
-result = [{"log": log, "normal": round(prob[0], 2), "malicious": round(prob[1], 2)} for log, prob in zip(logs, predictions)]
-result
-                `;
-
-                pyodide.globals.set("logs_input_js", logInput);
-
-                try {
-                    const result = await pyodide.runPythonAsync(pythonCode);
-                    document.getElementById("result").innerHTML = `
-                        <h3>Ergebnisse:</h3>
-                        <ul>
-                            ${result.map(r => `
-                                <li>
-                                    <strong>Log:</strong> ${r.log}<br>
-                                    <strong>Normal:</strong> ${r.normal}<br>
-                                    <strong>Böse:</strong> ${r.malicious}<br>
-                                </li>`).join("")}
-                        </ul>
-                    `;
-                } catch (error) {
-                    console.error(error);
-                    alert("Fehler bei der Klassifikation. Überprüfen Sie das Modell und den Vektorisierer.");
-                }
-            };
-
-            vectorizerReader.readAsArrayBuffer(vectorizerFile);
-        };
-
-        modelReader.readAsArrayBuffer(modelFile);
-    });
-}
-
-loadPyodideAndClassify();
-
+                    // Zeige detaillierte Ergebnisse in der Konsole
+                    console.log(`Log: ${result.log}`);
+                    console.log(`Normal: ${result.normal}, Malicious: ${result.malicious}`);
+                });
+            } else {
+                alert("Fehler bei der Analyse.");
+            }
+        });
     </script>
 </body>
 </html>

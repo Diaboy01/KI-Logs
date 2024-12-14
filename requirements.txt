@@ -7,3 +7,8 @@ tensorflow
 keras
 matplotlib
 seaborn
+numpy
+joblib
+fastapi
+python-multipart
+uvicorn
