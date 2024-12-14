@@ -11,8 +11,20 @@ import os
 import mysql.connector
 import random
 import datetime
-from pydantic import BaseModel
 import google.generativeai as genai
+import logging
+
+# Logging-Konfiguration
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("gemini_logs.log"),  # Logs werden in Datei geschrieben
+        logging.StreamHandler(),                # Logs erscheinen im Terminal
+    ],
+)
+
+
 
 # Azure OpenAI-Konfigurationsvariablen
 AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
@@ -64,19 +76,34 @@ async def predict_text(request: LogRequest):
     Vorhersage für eingegebene Log-Daten
     """
     try:
+        # Eingehende Logs empfangen
         logs = request.logs
-        logs_df = pd.DataFrame({"log": logs})
-        logs_tfidf = vectorizer.transform(logs_df["log"])
-        predictions = model.predict_proba(logs_tfidf)
+        logging.info(f"[INFO] Eingehende Log-Daten zur Vorhersage: {logs}")
 
+        # Logs in DataFrame umwandeln
+        logs_df = pd.DataFrame({"log": logs})
+        logging.debug(f"[DEBUG] DataFrame erstellt: {logs_df.head()}")
+
+        # Transformation der Logs
+        logs_tfidf = vectorizer.transform(logs_df["log"])
+        logging.debug(f"[DEBUG] TF-IDF Transformation abgeschlossen.")
+
+        # Vorhersagen durchführen
+        predictions = model.predict_proba(logs_tfidf)
+        logging.debug(f"[DEBUG] Vorhersagen abgeschlossen: {predictions}")
+
+        # Ergebnisse zusammenstellen
         results = [
             {"log": log, "normal": round(prob[0], 2), "malicious": round(prob[1], 2)}
             for log, prob in zip(logs, predictions)
         ]
+        logging.info(f"[INFO] Vorhersageergebnisse: {results}")
+
         return {"results": results}
     except Exception as e:
+        logging.error(f"[ERROR] Fehler bei der Vorhersage: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Fehler bei der Verarbeitung: {e}")
-    
+
 
 @app.post("/azure-ai")
 async def azure_ai(request: AzureRequest):
@@ -159,8 +186,8 @@ async def random_value(attribute: str):
 
 
 # Google Gemini-API-Schlüssel konfigurieren
-GENAI_API_KEY = os.getenv("GENAI_API_KEY")
-genai.configure(api_key=GENAI_API_KEY)
+api_key = "AIzaSyCReInvNZm4hGIngEz8tMAsOqskZCoj2b0"
+genai.configure(api_key=api_key)
 
 # Generative Modellkonfiguration
 generation_config = {
@@ -191,15 +218,22 @@ class GeminiChatRequest(BaseModel):
 
 @app.post("/gemini-chat")
 async def gemini_chat(request: GeminiChatRequest):
+    """
+    API für Gemini-Chat
+    """
     try:
         user_message = request.message
+        logging.info(f"Empfangene Nachricht vom Benutzer: {user_message}")
+
+        # Gemini-Anfrage senden
         response = chat_session.send_message({"role": "user", "parts": [{"text": user_message}]})
-        return {"response": response.text}
+        gemini_response = response.text
+
+        logging.info(f"Antwort von Gemini: {gemini_response}")
+        return {"response": gemini_response}
     except Exception as e:
+        logging.error(f"Fehler bei der Verarbeitung durch Gemini: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Gemini-Chat Fehler: {str(e)}")
-
-
-
 
 
 # Starte FastAPI über Uvicorn (optional direkt im Skript)

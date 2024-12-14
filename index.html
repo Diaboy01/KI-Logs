@@ -256,7 +256,10 @@
 
         const sendGeminiMessage = async () => {
     const chatInput = document.getElementById("chat-input").value;
+    console.log("[INFO] Benutzer-Nachricht:", chatInput);
+
     if (!chatInput.trim()) {
+        console.error("[WARN] Keine Nachricht eingegeben.");
         alert("Bitte geben Sie eine Nachricht ein.");
         return;
     }
@@ -271,6 +274,7 @@
     chatMessages.appendChild(userMessageDiv);
 
     try {
+        console.log("[INFO] Anfrage an Gemini wird gesendet...");
         const response = await fetch("http://127.0.0.1:8000/gemini-chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -279,6 +283,8 @@
 
         if (response.ok) {
             const data = await response.json();
+            console.log("[INFO] Antwort von Gemini:", data.response);
+
             const geminiResponseDiv = document.createElement("div");
             geminiResponseDiv.style.padding = "10px";
             geminiResponseDiv.style.backgroundColor = "#d4edda";
@@ -287,9 +293,17 @@
             geminiResponseDiv.innerText = `Gemini: ${data.response}`;
             chatMessages.appendChild(geminiResponseDiv);
         } else {
-            throw new Error("Fehler bei der Anfrage an Gemini.");
+            console.error("[ERROR] Fehler bei der Anfrage:", response.statusText);
+            const errorDiv = document.createElement("div");
+            errorDiv.style.padding = "10px";
+            errorDiv.style.backgroundColor = "#f8d7da";
+            errorDiv.style.borderRadius = "8px";
+            errorDiv.style.marginBottom = "10px";
+            errorDiv.innerText = "Fehler bei der Verarbeitung durch Gemini.";
+            chatMessages.appendChild(errorDiv);
         }
     } catch (error) {
+        console.error("[ERROR] Netzwerkfehler oder Serverproblem:", error);
         const errorDiv = document.createElement("div");
         errorDiv.style.padding = "10px";
         errorDiv.style.backgroundColor = "#f8d7da";
@@ -301,6 +315,7 @@
         document.getElementById("chat-input").value = "";
     }
 };
+
 
     </script>
 </body>
