@@ -11,7 +11,8 @@ import os
 import mysql.connector
 import random
 import datetime
-
+from pydantic import BaseModel
+import google.generativeai as genai
 
 # Azure OpenAI-Konfigurationsvariablen
 AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
@@ -152,6 +153,52 @@ async def random_value(attribute: str):
         return {"error": str(e)}
     finally:
         conn.close()
+
+
+
+
+
+# Google Gemini-API-Schlüssel konfigurieren
+GENAI_API_KEY = os.getenv("GENAI_API_KEY")
+genai.configure(api_key=GENAI_API_KEY)
+
+# Generative Modellkonfiguration
+generation_config = {
+    "temperature": 1,
+    "top_p": 0.95,
+    "top_k": 64,
+    "max_output_tokens": 1024,
+    "response_mime_type": "text/plain",
+}
+safety_settings = [
+    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+]
+
+model = genai.GenerativeModel(
+    model_name="gemini-1.5-pro-latest",
+    safety_settings=safety_settings,
+    generation_config=generation_config,
+)
+
+# Chat-Session erstellen
+chat_session = model.start_chat(history=[])
+
+class GeminiChatRequest(BaseModel):
+    message: str
+
+@app.post("/gemini-chat")
+async def gemini_chat(request: GeminiChatRequest):
+    try:
+        user_message = request.message
+        response = chat_session.send_message({"role": "user", "parts": [{"text": user_message}]})
+        return {"response": response.text}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gemini-Chat Fehler: {str(e)}")
+
+
 
 
 

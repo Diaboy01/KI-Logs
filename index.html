@@ -93,6 +93,57 @@
 <body>
     <h1>Log-Klassifikation und -Builder</h1>
 
+
+
+        <!-- Log-Builder -->
+        <div id="log-builder" class="builder-section">
+            <h2>Log-Builder</h2>
+            <div class="attribute-group">
+                <label for="ip">IP-Adresse:</label>
+                <span id="ip">Lade...</span>
+                <button onclick="fetchRandomValue('ip')">Neu laden</button>
+            </div>
+            <div class="attribute-group">
+                <label for="user">Benutzer:</label>
+                <span id="user">Lade...</span>
+                <button onclick="fetchRandomValue('user')">Neu laden</button>
+            </div>
+            <div class="attribute-group">
+                <label for="timestamp">Zeitstempel:</label>
+                <span id="timestamp">Lade...</span>
+                <button onclick="fetchRandomValue('timestamp')">Neu laden</button>
+            </div>
+            <div class="attribute-group">
+                <label for="url">URL:</label>
+                <span id="url">Lade...</span>
+                <button onclick="fetchRandomValue('url')">Neu laden</button>
+            </div>
+            <div class="attribute-group">
+                <label for="method">HTTP-Methode:</label>
+                <span id="method">Lade...</span>
+                <button onclick="fetchRandomValue('method')">Neu laden</button>
+            </div>
+            <button id="generate-log" onclick="generateLog()">Log erstellen</button>
+        </div>
+        <div id="final-log" style="display: none;">
+            <h2>Erstellter Log-Eintrag</h2>
+            <p id="log-output"></p>
+        </div>
+
+
+    <!-- Gemini-Chat -->
+        <div id="gemini-chat" class="builder-section">
+            <h2>Gemini-Chat</h2>
+            <textarea id="chat-input" rows="3" placeholder="Ihre Nachricht an Gemini..."></textarea>
+            <button id="send-message" onclick="sendGeminiMessage()">Nachricht senden</button>
+            <div id="chat-history" style="margin-top: 20px;">
+                <h3>Chat-Verlauf</h3>
+                <div id="chat-messages" style="background: #f1f1f1; padding: 10px; border-radius: 8px; max-height: 300px; overflow-y: auto;"></div>
+            </div>
+        </div>
+        
+
+
     <!-- Log-Klassifikation -->
     <form id="log-form">
         <h2>Log-Klassifikation</h2>
@@ -108,40 +159,7 @@
         <p id="ai-output"></p>
     </div>
 
-    <!-- Log-Builder -->
-    <div id="log-builder" class="builder-section">
-        <h2>Log-Builder</h2>
-        <div class="attribute-group">
-            <label for="ip">IP-Adresse:</label>
-            <span id="ip">Lade...</span>
-            <button onclick="fetchRandomValue('ip')">Neu laden</button>
-        </div>
-        <div class="attribute-group">
-            <label for="user">Benutzer:</label>
-            <span id="user">Lade...</span>
-            <button onclick="fetchRandomValue('user')">Neu laden</button>
-        </div>
-        <div class="attribute-group">
-            <label for="timestamp">Zeitstempel:</label>
-            <span id="timestamp">Lade...</span>
-            <button onclick="fetchRandomValue('timestamp')">Neu laden</button>
-        </div>
-        <div class="attribute-group">
-            <label for="url">URL:</label>
-            <span id="url">Lade...</span>
-            <button onclick="fetchRandomValue('url')">Neu laden</button>
-        </div>
-        <div class="attribute-group">
-            <label for="method">HTTP-Methode:</label>
-            <span id="method">Lade...</span>
-            <button onclick="fetchRandomValue('method')">Neu laden</button>
-        </div>
-        <button id="generate-log" onclick="generateLog()">Log erstellen</button>
-    </div>
-    <div id="final-log" style="display: none;">
-        <h2>Erstellter Log-Eintrag</h2>
-        <p id="log-output"></p>
-    </div>
+
 
     <script>
         document.getElementById("log-file").addEventListener("change", function(event) {
@@ -232,6 +250,58 @@
         };
 
         ['ip', 'user', 'timestamp', 'url', 'method'].forEach(fetchRandomValue);
+
+
+
+
+        const sendGeminiMessage = async () => {
+    const chatInput = document.getElementById("chat-input").value;
+    if (!chatInput.trim()) {
+        alert("Bitte geben Sie eine Nachricht ein.");
+        return;
+    }
+
+    const chatMessages = document.getElementById("chat-messages");
+    const userMessageDiv = document.createElement("div");
+    userMessageDiv.style.padding = "10px";
+    userMessageDiv.style.backgroundColor = "#e9ecef";
+    userMessageDiv.style.borderRadius = "8px";
+    userMessageDiv.style.marginBottom = "10px";
+    userMessageDiv.innerText = `Sie: ${chatInput}`;
+    chatMessages.appendChild(userMessageDiv);
+
+    try {
+        const response = await fetch("http://127.0.0.1:8000/gemini-chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: chatInput }),
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            const geminiResponseDiv = document.createElement("div");
+            geminiResponseDiv.style.padding = "10px";
+            geminiResponseDiv.style.backgroundColor = "#d4edda";
+            geminiResponseDiv.style.borderRadius = "8px";
+            geminiResponseDiv.style.marginBottom = "10px";
+            geminiResponseDiv.innerText = `Gemini: ${data.response}`;
+            chatMessages.appendChild(geminiResponseDiv);
+        } else {
+            throw new Error("Fehler bei der Anfrage an Gemini.");
+        }
+    } catch (error) {
+        const errorDiv = document.createElement("div");
+        errorDiv.style.padding = "10px";
+        errorDiv.style.backgroundColor = "#f8d7da";
+        errorDiv.style.borderRadius = "8px";
+        errorDiv.style.marginBottom = "10px";
+        errorDiv.innerText = `Fehler: ${error.message}`;
+        chatMessages.appendChild(errorDiv);
+    } finally {
+        document.getElementById("chat-input").value = "";
+    }
+};
+
     </script>
 </body>
 </html>

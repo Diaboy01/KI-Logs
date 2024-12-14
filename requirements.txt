@@ -12,3 +12,4 @@ joblib
 fastapi
 python-multipart
 uvicorn
+google-generativeai
