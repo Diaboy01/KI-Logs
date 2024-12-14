@@ -24,8 +24,6 @@ logging.basicConfig(
     ],
 )
 
-
-
 # Azure OpenAI-Konfigurationsvariablen
 AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
@@ -49,8 +47,8 @@ app.add_middleware(
 )
 
 # Modell und Vektorisierer laden
-model = joblib.load("log_classifier.pkl")
-vectorizer = joblib.load("log_vectorizer.pkl")
+log_classifier_model = joblib.load("log_classifier.pkl")
+tfidf_vectorizer = joblib.load("log_vectorizer.pkl")
 
 # API-Klassen
 class LogRequest(BaseModel):
@@ -85,11 +83,11 @@ async def predict_text(request: LogRequest):
         logging.debug(f"[DEBUG] DataFrame erstellt: {logs_df.head()}")
 
         # Transformation der Logs
-        logs_tfidf = vectorizer.transform(logs_df["log"])
+        logs_tfidf = tfidf_vectorizer.transform(logs_df["log"])
         logging.debug(f"[DEBUG] TF-IDF Transformation abgeschlossen.")
 
         # Vorhersagen durchführen
-        predictions = model.predict_proba(logs_tfidf)
+        predictions = log_classifier_model.predict_proba(logs_tfidf)
         logging.debug(f"[DEBUG] Vorhersagen abgeschlossen: {predictions}")
 
         # Ergebnisse zusammenstellen
@@ -103,7 +101,6 @@ async def predict_text(request: LogRequest):
     except Exception as e:
         logging.error(f"[ERROR] Fehler bei der Vorhersage: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Fehler bei der Verarbeitung: {e}")
-
 
 @app.post("/azure-ai")
 async def azure_ai(request: AzureRequest):
@@ -127,13 +124,8 @@ async def azure_ai(request: AzureRequest):
         data = response.json()
         return {"response": data["choices"][0]["message"]["content"]}
     except requests.exceptions.RequestException as e:
+        logging.error(f"[ERROR] Azure OpenAI Fehler: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Azure OpenAI Fehler: {e}")
-
-
-
-
-
-
 
 DB_HOST = "localhost"
 DB_USER = "root"
@@ -177,41 +169,38 @@ async def random_value(attribute: str):
         else:
             return {"value": "Unbekanntes Attribut"}
     except Exception as e:
+        logging.error(f"[ERROR] Datenbankfehler: {str(e)}")
         return {"error": str(e)}
     finally:
         conn.close()
 
-
-
-
-
 # Google Gemini-API-Schlüssel konfigurieren
-api_key = "AIzaSyCReInvNZm4hGIngEz8tMAsOqskZCoj2b0"
-genai.configure(api_key=api_key)
+gemini_api_key = "AIzaSyCReInvNZm4hGIngEz8tMAsOqskZCoj2b0"
+genai.configure(api_key=gemini_api_key)
 
 # Generative Modellkonfiguration
-generation_config = {
+gemini_generation_config = {
     "temperature": 1,
     "top_p": 0.95,
     "top_k": 64,
     "max_output_tokens": 1024,
     "response_mime_type": "text/plain",
 }
-safety_settings = [
+gemini_safety_settings = [
     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
     {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
     {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
     {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
 ]
 
-model = genai.GenerativeModel(
+gemini_model = genai.GenerativeModel(
     model_name="gemini-1.5-pro-latest",
-    safety_settings=safety_settings,
-    generation_config=generation_config,
+    safety_settings=gemini_safety_settings,
+    generation_config=gemini_generation_config,
 )
 
 # Chat-Session erstellen
-chat_session = model.start_chat(history=[])
+gemini_chat_session = gemini_model.start_chat(history=[])
 
 class GeminiChatRequest(BaseModel):
     message: str
@@ -226,13 +215,13 @@ async def gemini_chat(request: GeminiChatRequest):
         logging.info(f"Empfangene Nachricht vom Benutzer: {user_message}")
 
         # Gemini-Anfrage senden
-        response = chat_session.send_message({"role": "user", "parts": [{"text": user_message}]})
+        response = gemini_chat_session.send_message({"role": "user", "parts": [{"text": user_message}]})
         gemini_response = response.text
 
         logging.info(f"Antwort von Gemini: {gemini_response}")
         return {"response": gemini_response}
     except Exception as e:
-        logging.error(f"Fehler bei der Verarbeitung durch Gemini: {str(e)}")
+        logging.error(f"[ERROR] Fehler bei der Verarbeitung durch Gemini: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Gemini-Chat Fehler: {str(e)}")
 
 
@@ -240,5 +229,4 @@ async def gemini_chat(request: GeminiChatRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-    # http://127.0.0.1:8000/
     print("API gestartet unter: http://127.0.0.1:8000/")
