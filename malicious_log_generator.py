@@ -45,7 +45,7 @@ def integrate_attack_in_url(original_url, attack_pattern):
     query_params = parse_qs(parsed_url.query)
 
     if not query_params:
-        new_url = f"{original_url}&{attack_pattern}"
+        new_url = f"{original_url}?malicious_param={attack_pattern}"
     else:
         query_params["malicious_param"] = attack_pattern
         new_query = urlencode(query_params, doseq=True)
