@@ -8,6 +8,9 @@ import joblib
 import pandas as pd
 import requests
 import os
+import mysql.connector
+import random
+import datetime
 
 
 # Azure OpenAI-Konfigurationsvariablen
@@ -97,6 +100,61 @@ async def azure_ai(request: AzureRequest):
         return {"response": data["choices"][0]["message"]["content"]}
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=500, detail=f"Azure OpenAI Fehler: {e}")
+
+
+
+
+
+
+
+DB_HOST = "localhost"
+DB_USER = "root"
+DB_PASSWORD = ""
+DB_NAME = "log_generator"
+
+# Verbindung zur Datenbank
+def connect_to_db():
+    return mysql.connector.connect(
+        host=DB_HOST,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        database=DB_NAME
+    )
+
+# Zufälligen Wert aus einer Tabelle abrufen
+@app.get("/random/{attribute}")
+async def random_value(attribute: str):
+    try:
+        conn = connect_to_db()
+        cursor = conn.cursor(dictionary=True)
+
+        if attribute == "ip":
+            cursor.execute("SELECT ip FROM myfiles_logs ORDER BY RAND() LIMIT 1")
+            result = cursor.fetchone()
+            return {"value": result["ip"] if result else "Keine IP gefunden"}
+        elif attribute == "user":
+            cursor.execute("SELECT user FROM myfiles_logs ORDER BY RAND() LIMIT 1")
+            result = cursor.fetchone()
+            return {"value": result["user"] if result else "Kein Benutzer gefunden"}
+        elif attribute == "timestamp":
+            timestamp = datetime.datetime.now().strftime("%d/%b/%Y:%H:%M:%S +0000")
+            return {"value": timestamp}
+        elif attribute == "url":
+            cursor.execute("SELECT url FROM myfiles_logs ORDER BY RAND() LIMIT 1")
+            result = cursor.fetchone()
+            return {"value": result["url"] if result else "Keine URL gefunden"}
+        elif attribute == "method":
+            method = random.choice(["GET", "POST", "DELETE"])
+            return {"value": method}
+        else:
+            return {"value": "Unbekanntes Attribut"}
+    except Exception as e:
+        return {"error": f"Fehler beim Abrufen des Attributs: {str(e)}"}
+    finally:
+        if 'conn' in locals() and conn.is_connected():
+            conn.close()
+
+
 
 
 # Starte FastAPI über Uvicorn (optional direkt im Skript)

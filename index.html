@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Log-Klassifikation</title>
+    <title>Log-Klassifikation und -Builder</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -16,46 +16,40 @@
             text-align: center;
             color: #007BFF;
         }
-        form {
-            max-width: 600px;
-            margin: 0 auto;
+        form, .builder-section {
+            max-width: 800px;
+            margin: 20px auto;
             padding: 20px;
             background: #fff;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
-        label {
-            display: block;
-            margin-bottom: 10px;
+        label, h2 {
             font-weight: bold;
+            margin-bottom: 10px;
+        }
+        textarea, input[type="file"], button {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            font-size: 16px;
         }
         textarea {
-            width: 100%;
-            padding: 10px;
             border: 1px solid #ccc;
             border-radius: 4px;
-            font-size: 14px;
-        }
-        input[type="file"] {
-            margin-top: 10px;
-            padding: 10px;
         }
         button {
-            display: block;
-            width: 100%;
-            padding: 10px;
             background-color: #007BFF;
             color: #fff;
             border: none;
             border-radius: 4px;
-            font-size: 16px;
             cursor: pointer;
         }
         button:hover {
             background-color: #0056b3;
         }
-        #results {
-            max-width: 600px;
+        #results, #final-log, #ai-response {
+            max-width: 800px;
             margin: 20px auto;
             padding: 20px;
             background: #fff;
@@ -81,11 +75,27 @@
         .log-entry:hover {
             background-color: #e9ecef;
         }
+        .attribute-group {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .attribute-group span {
+            flex: 2;
+            background: #f1f1f1;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
     </style>
 </head>
 <body>
-    <h1>Log-Klassifikation</h1>
+    <h1>Log-Klassifikation und -Builder</h1>
+
+    <!-- Log-Klassifikation -->
     <form id="log-form">
+        <h2>Log-Klassifikation</h2>
         <label for="log-text">Log-Einträge eingeben (jeder Eintrag in einer neuen Zeile):</label>
         <textarea id="log-text" name="log-text" rows="10" placeholder="Hier Log-Einträge eingeben..." required></textarea>
         <label for="log-file">Oder Log-Datei hochladen:</label>
@@ -93,10 +103,46 @@
         <button type="submit">Analyse starten</button>
     </form>
     <div id="results"></div>
-    <div id="ai-response" style="max-width: 600px; margin: 20px auto; padding: 20px; background: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); display: none;">
+    <div id="ai-response" style="display: none;">
         <h2>Azure OpenAI Antwort:</h2>
         <p id="ai-output"></p>
     </div>
+
+    <!-- Log-Builder -->
+    <div id="log-builder" class="builder-section">
+        <h2>Log-Builder</h2>
+        <div class="attribute-group">
+            <label for="ip">IP-Adresse:</label>
+            <span id="ip">Lade...</span>
+            <button onclick="fetchRandomValue('ip')">Neu laden</button>
+        </div>
+        <div class="attribute-group">
+            <label for="user">Benutzer:</label>
+            <span id="user">Lade...</span>
+            <button onclick="fetchRandomValue('user')">Neu laden</button>
+        </div>
+        <div class="attribute-group">
+            <label for="timestamp">Zeitstempel:</label>
+            <span id="timestamp">Lade...</span>
+            <button onclick="fetchRandomValue('timestamp')">Neu laden</button>
+        </div>
+        <div class="attribute-group">
+            <label for="url">URL:</label>
+            <span id="url">Lade...</span>
+            <button onclick="fetchRandomValue('url')">Neu laden</button>
+        </div>
+        <div class="attribute-group">
+            <label for="method">HTTP-Methode:</label>
+            <span id="method">Lade...</span>
+            <button onclick="fetchRandomValue('method')">Neu laden</button>
+        </div>
+        <button id="generate-log" onclick="generateLog()">Log erstellen</button>
+    </div>
+    <div id="final-log" style="display: none;">
+        <h2>Erstellter Log-Eintrag</h2>
+        <p id="log-output"></p>
+    </div>
+
     <script>
         document.getElementById("log-file").addEventListener("change", function(event) {
             const file = event.target.files[0];
@@ -116,9 +162,7 @@
 
             const response = await fetch("http://127.0.0.1:8000/predict-text", {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ logs: logText.split("\n") })
             });
 
@@ -140,9 +184,7 @@
                         try {
                             const aiResponse = await fetch("http://127.0.0.1:8000/azure-ai", {
                                 method: "POST",
-                                headers: {
-                                    "Content-Type": "application/json",
-                                },
+                                headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({ log: result.log })
                             });
 
@@ -162,6 +204,34 @@
                 alert("Fehler bei der Analyse.");
             }
         });
+
+        const fetchRandomValue = async (attribute) => {
+            try {
+                const response = await fetch(`http://127.0.0.1:8000/random/${attribute}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById(attribute).innerText = data.value;
+                } else {
+                    console.error(`Fehler beim Laden von ${attribute}`);
+                }
+            } catch (error) {
+                console.error(`Fehler beim Abrufen von ${attribute}:`, error);
+            }
+        };
+
+        const generateLog = () => {
+            const ip = document.getElementById('ip').innerText;
+            const user = document.getElementById('user').innerText;
+            const timestamp = document.getElementById('timestamp').innerText;
+            const url = document.getElementById('url').innerText;
+            const method = document.getElementById('method').innerText;
+
+            const log = `${ip} - ${user} [${timestamp}] "${method} ${url} HTTP/1.1"`;
+            document.getElementById('log-output').innerText = log;
+            document.getElementById('final-log').style.display = 'block';
+        };
+
+        ['ip', 'user', 'timestamp', 'url', 'method'].forEach(fetchRandomValue);
     </script>
 </body>
 </html>
