@@ -174,7 +174,7 @@ if __name__ == "__main__":
             "table": "http_method_exploit_logs",
             "prompt": "Generiere realistische HTTP-Exploits (zu Sicherheitszwecken) wie: 'DELETE /important-data HTTP/1.1'",
             # Akzeptiert HTTP-Methoden und URLs
-            "regex": r"(?i)^(GET|POST|PUT|DELETE|HEAD|OPTIONS|TRACE|CONNECT)\s+\/[^\s]*\s+HTTP\/1\.[01](\r\n.*|\s+.*|$)"
+            "regex": r"(?is).*(GET|POST|PUT|DELETE|HEAD|OPTIONS|TRACE|CONNECT).*HTTP\/1\.[01].*"
         }
     ]
 
