@@ -1,4 +1,4 @@
-# File: azure.py
+# File: azure_chatbot.py
 
 import os
 import logging
@@ -55,7 +55,7 @@ if __name__ == "__main__":
     user_input = input("Was möchtest du fragen? ")
 
     # Optionaler Seitenkontext (kann auch aus einer Datei oder Webanfrage kommen)
-    page_context = "Hier könnte ein Webseitenkontext stehen."
+    page_context = 'a1b2c3d4-e5f6-7890-1234-567890abcdef 192.168.1.10 [16/Dec/2024:10:00:00 +0100] "POST /api/v1/users HTTP/1.1" 403 0.5 "-" "sqlmap/1.5.1#stable (http://sqlmap.org)" 172.17.0.2 -'
 
     if user_input:
         response = send_chat_request(user_input, page_context)

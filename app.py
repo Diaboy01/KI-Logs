@@ -13,6 +13,7 @@ import random
 import datetime
 import google.generativeai as genai
 import logging
+from dotenv import load_dotenv
 
 # Logging-Konfiguration
 logging.basicConfig(
@@ -23,6 +24,9 @@ logging.basicConfig(
         logging.StreamHandler(),                # Logs erscheinen im Terminal
     ],
 )
+
+# .env-Datei laden 
+load_dotenv()
 
 # Azure OpenAI-Konfigurationsvariablen
 AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
@@ -175,7 +179,7 @@ async def random_value(attribute: str):
         conn.close()
 
 # Google Gemini-API-Schlüssel konfigurieren
-gemini_api_key = "AIzaSyCReInvNZm4hGIngEz8tMAsOqskZCoj2b0"
+gemini_api_key = os.getenv("GEMINI_API_KEY")
 genai.configure(api_key=gemini_api_key)
 
 # Generative Modellkonfiguration
